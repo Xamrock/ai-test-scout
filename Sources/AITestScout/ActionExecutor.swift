@@ -12,8 +12,8 @@ public class ActionExecutor: @unchecked Sendable {
     /// Initialize action executor
     /// - Parameters:
     ///   - app: The XCUIApplication to execute actions on
-    ///   - waitTimeout: How long to wait for elements (default: 5 seconds)
-    nonisolated public init(app: XCUIApplication, waitTimeout: TimeInterval = 5) {
+    ///   - waitTimeout: How long to wait for elements (default: 2 seconds)
+    nonisolated public init(app: XCUIApplication, waitTimeout: TimeInterval = 2) {
         self.app = app
         self.waitTimeout = waitTimeout
     }
@@ -162,7 +162,7 @@ public enum ActionError: Error, LocalizedError {
         case .missingText:
             return "Type action requires text to type"
         case .elementNotFound(let identifier):
-            return "Element not found: '\(identifier)' (waited \(5) seconds)"
+            return "Element not found: '\(identifier)' (waited 2 seconds)"
         case .executionFailed(let reason):
             return "Action execution failed: \(reason)"
         }

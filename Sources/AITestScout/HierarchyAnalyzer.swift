@@ -129,7 +129,8 @@ public class HierarchyAnalyzer {
         delegate?.willCompressHierarchy(app: app, allElements: allElements)
 
         // Apply compression/prioritization (reduce to top 50 for AI)
-        let compressedElements = compressElements(allElements)
+        // Also captures detailed context for top 50 elements only (optimization)
+        let compressedElements = compressElements(allElements, app: app)
 
         // Detect screen type using semantic analysis
         let screenType = useSemanticAnalysis ? detectScreenType(from: compressedElements) : nil
@@ -221,9 +222,6 @@ public class HierarchyAnalyzer {
                 let key = elementKey(for: minimalElement)
                 seenElements.insert(key)
 
-                // Capture detailed context for LLM export
-                _ = captureElementContext(from: element, minimalElement: minimalElement, index: i)
-
                 let priority = calculatePriority(for: minimalElement)
                 let semanticPriority = getSemanticPriority(for: minimalElement)
 
@@ -260,9 +258,6 @@ public class HierarchyAnalyzer {
             guard !seenElements.contains(key) else { continue }
             seenElements.insert(key)
 
-            // Capture detailed context for LLM export
-            _ = captureElementContext(from: element, minimalElement: minimalElement, index: i)
-
             let priority = calculatePriority(for: minimalElement)
             let semanticPriority = getSemanticPriority(for: minimalElement)
 
@@ -281,12 +276,51 @@ public class HierarchyAnalyzer {
         return allElements
     }
 
-    /// Compresses elements to top 50 for AI consumption
-    /// - Parameter allElements: All captured elements
+    /// Compresses elements to top 50 for AI consumption and captures detailed context
+    /// - Parameters:
+    ///   - allElements: All captured elements
+    ///   - app: The XCUIApplication to query for context capture
     /// - Returns: Top 50 elements by priority
-    private func compressElements(_ allElements: [MinimalElement]) -> [MinimalElement] {
+    private func compressElements(_ allElements: [MinimalElement], app: XCUIApplication) -> [MinimalElement] {
         let targetCount = 50  // Optimized for AI token efficiency
-        return Array(allElements.prefix(targetCount))
+        let topElements = Array(allElements.prefix(targetCount))
+
+        // Capture detailed context for top 50 elements only (major optimization!)
+        // This reduces context capture from ~300 elements to just 50
+        for (index, element) in topElements.enumerated() {
+            // Re-query the element from the app for context capture
+            if let xcuiElement = findElementForContext(element, in: app) {
+                _ = captureElementContext(from: xcuiElement, minimalElement: element, index: index)
+            }
+        }
+
+        return topElements
+    }
+
+    /// Finds the XCUIElement for a MinimalElement to capture detailed context
+    /// - Parameters:
+    ///   - minimalElement: The MinimalElement to find
+    ///   - app: The XCUIApplication to search
+    /// - Returns: The matching XCUIElement if found
+    private func findElementForContext(_ minimalElement: MinimalElement, in app: XCUIApplication) -> XCUIElement? {
+        // Try to find by identifier first (most reliable)
+        if let id = minimalElement.id, !id.isEmpty {
+            let element = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            if element.exists {
+                return element
+            }
+        }
+
+        // Fallback to label if no identifier
+        if let label = minimalElement.label, !label.isEmpty {
+            let element = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+            if element.exists {
+                return element
+            }
+        }
+
+        // Element not found - this is okay, context will just not be captured
+        return nil
     }
 
     /// Checks if an element is part of the keyboard hierarchy
@@ -469,22 +503,18 @@ public class HierarchyAnalyzer {
         // Capture accessibility traits
         let traits = captureAccessibilityTraits(from: element)
 
-        // Safe hittability check (skip for elements with empty/invalid frames)
-        let isHittable: Bool
-        if element.frame.isEmpty || !element.frame.isFinite {
-            // Element has invalid frame - assume not hittable to avoid XCTest assertion
-            isHittable = false
-        } else {
-            // Safe to check hittability
-            isHittable = element.isHittable
-        }
+        // Skip expensive isHittable check during hierarchy capture
+        // This check triggers 3-5 XCTest queries per element and is only needed
+        // during action execution (ActionExecutor already checks it)
+        // Default to false for safety - actual hittability is verified before tap
+        let isHittable = false
 
         // Create context
         let context = ElementContext(
             xcuiElementType: String(describing: element.elementType),
             frame: element.frame,
             isEnabled: element.isEnabled,
-            isVisible: element.exists && isHittable,
+            isVisible: element.exists,  // Simplified without isHittable dependency
             isHittable: isHittable,
             hasFocus: false, // XCUIElement doesn't expose focus state directly
             queries: queries,
