@@ -254,7 +254,7 @@ public class DashboardGenerator {
                 <div class="footer-links">
                     <a href="https://xamrock.com" target="_blank">xamrock.com</a>
                     <span class="separator">•</span>
-                    <a href="https://github.com/anthropics/claude-code" target="_blank">GitHub</a>
+                    <a href="https://github.com/xamrock/ai-test-scout" target="_blank">GitHub</a>
                 </div>
             </div>
         </footer>

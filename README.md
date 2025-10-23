@@ -83,7 +83,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/xamrock/ai-test-scout", from: "0.1.0")
+    .package(url: "https://github.com/xamrock/ai-test-scout", from: "0.2.2")
 ]
 ```
 
@@ -91,40 +91,6 @@ Or in Xcode: **File → Add Package Dependencies**
 
 **Requirements:**
 - iOS 26+ (for AI exploration with Apple Intelligence)
-- Claude or OpenAI API key (set as environment variable)
-  - `ANTHROPIC_API_KEY` for Claude (recommended)
-  - `OPENAI_API_KEY` for OpenAI
-
----
-
-## How It Works
-
-```
-┌─────────────────┐
-│   Your App      │
-└────────┬────────┘
-         │
-         ↓
-┌─────────────────────────────┐
-│  AI Explorer                │
-│  - Captures UI hierarchy    │
-│  - Makes smart decisions    │
-│  - Records all actions      │
-└────────┬────────────────────┘
-         │
-         ↓
-┌─────────────────────────────┐
-│  Test Generator             │
-│  - Analyzes exploration     │
-│  - Generates XCUITest code  │
-│  - Adds waits & assertions  │
-└────────┬────────────────────┘
-         │
-         ↓
-┌─────────────────┐
-│  Working Tests  │
-└─────────────────┘
-```
 
 ---
 
@@ -204,7 +170,7 @@ try result.assertNoCriticalIssues()
 ## Community & Support
 
 - **Issues:** GitHub Issues for bugs and features
-- **Discussions:** GitHub Discussions for questions
+- **Discussions:** [Xamrock Community Discord](https://discord.gg/Pvmbamg2ny)
 
 ---
 
