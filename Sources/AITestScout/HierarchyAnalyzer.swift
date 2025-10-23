@@ -1,6 +1,14 @@
 import Foundation
 import XCTest
 
+/// CGRect extension for validation
+private extension CGRect {
+    var isFinite: Bool {
+        return origin.x.isFinite && origin.y.isFinite &&
+               size.width.isFinite && size.height.isFinite
+    }
+}
+
 /// Element priority levels for intelligent element selection
 private enum ElementPriority: Int, Comparable {
     case critical = 100  // Interactive + ID + Label
@@ -103,9 +111,15 @@ public class HierarchyAnalyzer {
         // Notify delegate that capture is beginning
         delegate?.willBeginCapture()
 
-        // Capture screenshot first
-        let screenshot = app.screenshot()
-        let screenshotData = screenshot.pngRepresentation
+        // Capture screenshot (may log XCTest warnings on timing/frame issues, but won't crash)
+        let screenshotData: Data
+        if app.frame.isEmpty {
+            // App has empty frame - skip screenshot to avoid XCTest error
+            screenshotData = Data()
+        } else {
+            let screenshot = app.screenshot()
+            screenshotData = screenshot.pngRepresentation
+        }
 
         // Capture ALL elements before compression (for comprehensive tools)
         let allElements = captureAllElementsFromApp(app)
@@ -455,13 +469,23 @@ public class HierarchyAnalyzer {
         // Capture accessibility traits
         let traits = captureAccessibilityTraits(from: element)
 
+        // Safe hittability check (skip for elements with empty/invalid frames)
+        let isHittable: Bool
+        if element.frame.isEmpty || !element.frame.isFinite {
+            // Element has invalid frame - assume not hittable to avoid XCTest assertion
+            isHittable = false
+        } else {
+            // Safe to check hittability
+            isHittable = element.isHittable
+        }
+
         // Create context
         let context = ElementContext(
             xcuiElementType: String(describing: element.elementType),
             frame: element.frame,
             isEnabled: element.isEnabled,
-            isVisible: element.exists && element.isHittable, // Simplified visibility check
-            isHittable: element.isHittable,
+            isVisible: element.exists && isHittable,
+            isHittable: isHittable,
             hasFocus: false, // XCUIElement doesn't expose focus state directly
             queries: queries,
             accessibilityTraits: traits,
