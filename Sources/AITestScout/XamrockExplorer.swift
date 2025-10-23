@@ -338,6 +338,11 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
                 // Auto-open dashboard in browser
                 if config.autoOpenDashboard {
                     openInBrowser(url: dashboardURL!)
+                    if config.verboseOutput {
+                        print("\n🌐 Opening dashboard in browser...")
+                        print("   If it doesn't open automatically, paste this into your browser:")
+                        print("   file://\(dashboardURL!.path)")
+                    }
                 }
             } catch {
                 print("⚠️  Failed to generate dashboard: \(error)")
