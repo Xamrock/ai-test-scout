@@ -79,7 +79,7 @@ public class AICrawler {
         goal: String? = nil,
         previousAction: String? = nil,
         recordStep: Bool = true
-    ) async throws -> CrawlerDecision {
+    ) async throws -> ExplorationDecision {
         // Record screen visit in navigation graph
         let isNewScreen = recordScreenVisit(hierarchy)
 
@@ -98,12 +98,11 @@ public class AICrawler {
                 // Notify delegate of stuck detection
                 delegate?.didDetectStuck(attemptCount: actionsOnCurrentScreen.count, screenFingerprint: hierarchy.fingerprint)
 
-                let decision = CrawlerDecision(
-                    reasoning: "Tried \(actionsOnCurrentScreen.count) actions on this screen without progress. Moving on to avoid infinite loop.",
+                let decision = ExplorationDecision(
                     action: "done",
                     targetElement: nil,
-                    textToType: nil,
-                    confidence: 80
+                    reasoning: "Tried \(actionsOnCurrentScreen.count) actions on this screen without progress. Moving on to avoid infinite loop.",
+                    successProbability: SuccessProbability(value: 0.8, reasoning: "High confidence that we should move on to avoid loops")
                 )
 
                 if recordStep, let path = explorationPath {
@@ -119,12 +118,11 @@ public class AICrawler {
         // Check for empty hierarchy first (before building choices)
         guard !hierarchy.elements.isEmpty else {
             // Return a "done" decision for empty hierarchies
-            let decision = CrawlerDecision(
-                reasoning: "No interactive elements found on screen. Marking exploration as complete.",
+            let decision = ExplorationDecision(
                 action: "done",
                 targetElement: nil,
-                textToType: nil,
-                confidence: 100
+                reasoning: "No interactive elements found on screen. Marking exploration as complete.",
+                successProbability: SuccessProbability(value: 1.0, reasoning: "Certain that exploration is complete with no elements")
             )
 
             if recordStep, let path = explorationPath {
@@ -145,12 +143,11 @@ public class AICrawler {
 
         guard !choices.isEmpty else {
             // No valid choices - return done
-            let decision = CrawlerDecision(
-                reasoning: "No valid actions available on this screen.",
+            let decision = ExplorationDecision(
                 action: "done",
                 targetElement: nil,
-                textToType: nil,
-                confidence: 100
+                reasoning: "No valid actions available on this screen.",
+                successProbability: SuccessProbability(value: 1.0, reasoning: "Certain there are no valid actions")
             )
 
             if recordStep, let path = explorationPath {
@@ -214,7 +211,7 @@ public class AICrawler {
         goal: String? = nil,
         previousAction: String? = nil,
         recordStep: Bool = true
-    ) async throws -> CrawlerDecision {
+    ) async throws -> ExplorationDecision {
         // Use the more reliable multiple choice approach
         return try await decideNextActionWithChoices(
             hierarchy: hierarchy,
@@ -223,6 +220,202 @@ public class AICrawler {
             previousAction: previousAction,
             recordStep: recordStep
         )
+    }
+
+    /// Ask the AI to decide the next action with enhanced success probability tracking
+    ///
+    /// This method returns an EnhancedExplorationDecision that includes:
+    /// - Success probability with confidence levels
+    /// - Expected outcome for verification
+    /// - Alternative actions for fallback strategies
+    ///
+    /// **Usage:**
+    /// ```swift
+    /// let decision = try await crawler.decideNextActionEnhanced(
+    ///     hierarchy: hierarchy,
+    ///     goal: "Complete registration"
+    /// )
+    ///
+    /// if decision.successProbability.confidenceLevel >= .high {
+    ///     // Execute with high confidence
+    ///     executeAction(decision)
+    /// } else {
+    ///     // Consider alternatives
+    ///     tryAlternatives(decision.alternativeActions)
+    /// }
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - hierarchy: The captured screen hierarchy
+    ///   - visited: Set of element identifiers/labels that have been interacted with
+    ///   - goal: The exploration goal
+    ///   - previousAction: The last action taken
+    ///   - recordStep: Whether to automatically record this decision in the exploration path
+    /// - Returns: Enhanced decision with success probability and alternatives
+    /// - Throws: Various errors if the AI cannot make a decision
+    public func decideNextActionEnhanced(
+        hierarchy: CompressedHierarchy,
+        visited: Set<String>? = nil,
+        goal: String? = nil,
+        previousAction: String? = nil,
+        recordStep: Bool = true
+    ) async throws -> ExplorationDecision {
+        // For now, use the existing decision logic and upgrade to enhanced
+        // In a future phase, we can add specialized prompts for enhanced decisions
+        let basicDecision = try await decideNextActionWithChoices(
+            hierarchy: hierarchy,
+            visited: visited,
+            goal: goal,
+            previousAction: previousAction,
+            recordStep: recordStep
+        )
+
+        // Convert basic decision to enhanced with inferred probability
+        let probability = inferSuccessProbability(from: basicDecision, hierarchy: hierarchy)
+
+        return ExplorationDecision(
+            action: basicDecision.action,
+            targetElement: basicDecision.targetElement,
+            reasoning: basicDecision.reasoning,
+            successProbability: probability,
+            textToType: basicDecision.textToType,
+            expectedOutcome: inferExpectedOutcome(from: basicDecision, hierarchy: hierarchy),
+            alternativeActions: inferAlternativeActions(from: basicDecision, hierarchy: hierarchy)
+        )
+    }
+
+    // MARK: - Enhanced Decision Helpers
+
+    /// Infer success probability from a basic decision
+    private func inferSuccessProbability(
+        from decision: ExplorationDecision,
+        hierarchy: CompressedHierarchy
+    ) -> SuccessProbability {
+        // Convert confidence (0-100) to probability (0.0-1.0)
+        let baseValue = Double(decision.confidence) / 100.0
+
+        // Build reasoning based on decision context
+        var reasoning = "Based on "
+
+        if decision.confidence >= 80 {
+            reasoning += "high confidence (\(decision.confidence)%)"
+        } else if decision.confidence >= 60 {
+            reasoning += "moderate confidence (\(decision.confidence)%)"
+        } else {
+            reasoning += "low confidence (\(decision.confidence)%)"
+        }
+
+        // Add context about action type
+        if decision.action == "done" {
+            reasoning += " and exploration completion"
+        } else if let target = decision.targetElement {
+            // Find element in hierarchy for additional context
+            if let element = hierarchy.elements.first(where: { $0.id == target || $0.label == target }) {
+                if element.interactive {
+                    reasoning += " with interactive element '\(target)'"
+                }
+                if let intent = element.intent {
+                    reasoning += " (intent: \(intent.rawValue))"
+                }
+            } else {
+                reasoning += " with target '\(target)'"
+            }
+        }
+
+        return SuccessProbability(value: baseValue, reasoning: reasoning)
+    }
+
+    /// Infer expected outcome from a basic decision
+    private func inferExpectedOutcome(
+        from decision: ExplorationDecision,
+        hierarchy: CompressedHierarchy
+    ) -> String? {
+        guard decision.action != "done" else {
+            return nil
+        }
+
+        // Try to infer outcome based on action and target
+        if decision.action == "swipe" {
+            return "More content should become visible"
+        }
+
+        if decision.action == "type", let text = decision.textToType {
+            return "Field should contain '\(text)'"
+        }
+
+        if decision.action == "tap", let target = decision.targetElement {
+            // Look for intent from hierarchy
+            if let element = hierarchy.elements.first(where: { $0.id == target || $0.label == target }) {
+                switch element.intent {
+                case .submit:
+                    return "Form submission or navigation to result screen"
+                case .cancel:
+                    return "Return to previous screen or clear form"
+                case .navigation:
+                    return "Navigate to different screen"
+                case .destructive:
+                    return "Item or data will be deleted or removed"
+                case .neutral, .none:
+                    break
+                }
+            }
+
+            return "Screen state change or navigation after tapping '\(target)'"
+        }
+
+        return nil
+    }
+
+    /// Infer alternative actions from a basic decision
+    private func inferAlternativeActions(
+        from decision: ExplorationDecision,
+        hierarchy: CompressedHierarchy
+    ) -> [String] {
+        var alternatives: [String] = []
+
+        // Don't suggest alternatives for "done"
+        guard decision.action != "done" else {
+            return []
+        }
+
+        // If confidence is low, suggest more alternatives
+        if decision.confidence < 60 {
+            // Suggest swipe as alternative for low-confidence tap
+            if decision.action == "tap" && !hierarchy.elements.isEmpty {
+                alternatives.append("swipe")
+            }
+
+            // Suggest done as alternative if confidence is very low
+            if decision.confidence < 40 {
+                alternatives.append("done")
+            }
+        }
+
+        // Suggest screen type-specific alternatives
+        if let screenType = hierarchy.screenType {
+            switch screenType {
+            case .form, .login:
+                if decision.action != "type" {
+                    // Suggest filling fields as alternative
+                    let emptyInputs = hierarchy.elements.filter {
+                        $0.type == .input && ($0.value == nil || $0.value!.isEmpty)
+                    }
+                    if let firstInput = emptyInputs.first,
+                       let inputId = firstInput.id ?? firstInput.label {
+                        alternatives.append("type_\(inputId)")
+                    }
+                }
+            case .list:
+                if decision.action != "swipe" {
+                    alternatives.append("swipe")
+                }
+            default:
+                break
+            }
+        }
+
+        // Always suggest at most 3 alternatives to keep it focused
+        return Array(alternatives.prefix(3))
     }
 
     // MARK: - Multiple Choice Implementation
@@ -383,6 +576,14 @@ public class AICrawler {
             intent: nil
         ))
 
+        // Log the choices being built for debugging
+        print("\n🎲 Built \(choices.count) action choices:")
+        for choice in choices {
+            let priorityIndicator = choice.priority > 100 ? "⭐️" : choice.priority < 30 ? "⚠️ " : "  "
+            print("  \(choice.number). \(priorityIndicator) [\(choice.priority)] \(choice.description)")
+        }
+        print()
+
         return choices
     }
 
@@ -410,8 +611,8 @@ public class AICrawler {
         return false
     }
 
-    /// Converts an AI choice to a CrawlerDecision
-    private func convertChoiceToDecision(choice: CrawlerChoice, choices: [ActionChoice]) throws -> CrawlerDecision {
+    /// Converts an AI choice to an ExplorationDecision
+    private func convertChoiceToDecision(choice: CrawlerChoice, choices: [ActionChoice]) throws -> ExplorationDecision {
         // Validate choice number
         guard choice.choice > 0 && choice.choice <= choices.count else {
             print("⚠️  Invalid choice number: \(choice.choice) (valid range: 1-\(choices.count))")
@@ -420,18 +621,33 @@ public class AICrawler {
 
         let selectedAction = choices[choice.choice - 1]
 
-        return CrawlerDecision(
-            reasoning: choice.reasoning,
+        // Convert confidence (0-100) to probability (0.0-1.0)
+        let probability = Double(choice.confidence) / 100.0
+
+        return ExplorationDecision(
             action: selectedAction.action,
             targetElement: selectedAction.targetElement,
-            textToType: selectedAction.textToType,
-            confidence: choice.confidence
+            reasoning: choice.reasoning,
+            successProbability: SuccessProbability(
+                value: probability,
+                reasoning: "AI confidence: \(choice.confidence)%"
+            ),
+            textToType: selectedAction.textToType
         )
     }
 
     /// Respond to prompt with multiple choice selection
     private func respondWithChoice(prompt: String, validChoiceCount: Int, maxRetries: Int = 2) async throws -> CrawlerChoice {
         var lastError: Error?
+
+        // Log the prompt being sent
+        print("\n" + String(repeating: "=", count: 80))
+        print("📝 PROMPT SENT TO AI (attempt 1/\(maxRetries)):")
+        print(String(repeating: "=", count: 80))
+        print(prompt)
+        print(String(repeating: "=", count: 80))
+        print("📊 Prompt stats: \(prompt.count) chars (~\(prompt.count/4) tokens)")
+        print(String(repeating: "=", count: 80) + "\n")
 
         for attempt in 0..<maxRetries {
             do {
@@ -494,15 +710,14 @@ public class AICrawler {
     public func findFeature(
         hierarchy: CompressedHierarchy,
         target: String
-    ) async throws -> CrawlerDecision {
+    ) async throws -> ExplorationDecision {
 
         guard !hierarchy.elements.isEmpty else {
-            return CrawlerDecision(
-                reasoning: "No elements found on screen. Cannot find target feature.",
+            return ExplorationDecision(
                 action: "done",
                 targetElement: nil,
-                textToType: nil,
-                confidence: 0
+                reasoning: "No elements found on screen. Cannot find target feature.",
+                successProbability: SuccessProbability(value: 0.0, reasoning: "No elements to search")
             )
         }
 
@@ -527,14 +742,14 @@ public class AICrawler {
     // MARK: - Private Helpers
 
     /// Respond to prompt with retry logic for robustness
-    private func respondWithRetry(prompt: String, maxRetries: Int = 2) async throws -> CrawlerDecision {
+    private func respondWithRetry(prompt: String, maxRetries: Int = 2) async throws -> ExplorationDecision {
         var lastError: Error?
 
         for attempt in 0..<maxRetries {
             do {
                 let response = try await session.respond(
                     to: prompt,
-                    generating: CrawlerDecision.self
+                    generating: ExplorationDecision.self
                 )
                 return response.content
             } catch let error as LanguageModelSession.GenerationError {
@@ -542,12 +757,11 @@ public class AICrawler {
                 if case .exceededContextWindowSize = error {
                     print("⚠️  Context window exceeded - hierarchy too large even after truncation")
                     // Return a swipe action to continue exploring
-                    return CrawlerDecision(
-                        reasoning: "Unable to process full hierarchy due to size. Attempting to scroll to see more content.",
+                    return ExplorationDecision(
                         action: "swipe",
                         targetElement: nil,
-                        textToType: nil,
-                        confidence: 50
+                        reasoning: "Unable to process full hierarchy due to size. Attempting to scroll to see more content.",
+                        successProbability: SuccessProbability(value: 0.5, reasoning: "Medium confidence fallback due to size constraints")
                     )
                 }
                 lastError = error
@@ -558,7 +772,7 @@ public class AICrawler {
                     do {
                         let response = try await session.respond(
                             to: sanitizedPrompt,
-                            generating: CrawlerDecision.self
+                            generating: ExplorationDecision.self
                         )
                         return response.content
                     } catch {
@@ -586,7 +800,7 @@ public class AICrawler {
     }
 
     /// Validate that the AI's decision is well-formed and actionable
-    private func validate(_ decision: CrawlerDecision) throws {
+    private func validate(_ decision: ExplorationDecision) throws {
         // Validate action is one of the allowed types
         let validActions = ["tap", "type", "swipe", "done"]
         guard validActions.contains(decision.action) else {
@@ -853,7 +1067,7 @@ public class AICrawler {
     public func recordTransition(
         from fromFingerprint: String,
         to toFingerprint: String,
-        decision: CrawlerDecision,
+        decision: ExplorationDecision,
         duration: TimeInterval
     ) {
         let action = Action(
@@ -913,6 +1127,134 @@ public class AICrawler {
     /// - Returns: Coverage stats including screens explored, edges, etc.
     public func getCoverageStats() -> CoverageStats {
         return navigationGraph.coverageStats()
+    }
+
+    // MARK: - Action Verification (Phase 3)
+
+    /// Verify that an action achieved its expected outcome
+    /// - Parameters:
+    ///   - decision: The exploration decision that was executed
+    ///   - beforeHierarchy: Screen hierarchy before the action
+    ///   - afterHierarchy: Screen hierarchy after the action
+    /// - Returns: VerificationResult indicating success or failure
+    nonisolated public func verifyAction(
+        decision: ExplorationDecision,
+        beforeHierarchy: CompressedHierarchy,
+        afterHierarchy: CompressedHierarchy
+    ) -> VerificationResult {
+        let verifier = ActionVerifier()
+        return verifier.verify(
+            decision: decision,
+            beforeHierarchy: beforeHierarchy,
+            afterHierarchy: afterHierarchy
+        )
+    }
+
+    /// Convert an alternative action string to a full ExplorationDecision
+    /// - Parameters:
+    ///   - alternativeAction: Alternative action string (e.g., "swipe", "tap_backButton", "type_emailField")
+    ///   - context: Current screen hierarchy for context
+    /// - Returns: A new ExplorationDecision for the alternative action
+    /// - Throws: CrawlerError if the alternative cannot be converted
+    public func convertAlternativeToDecision(
+        _ alternativeAction: String,
+        context: CompressedHierarchy
+    ) async throws -> ExplorationDecision {
+        // Parse the alternative action format
+        let components = alternativeAction.split(separator: "_", maxSplits: 1)
+        let action = String(components[0])
+        let targetElement = components.count > 1 ? String(components[1]) : nil
+
+        // Handle different action types
+        switch action.lowercased() {
+        case "swipe":
+            return ExplorationDecision(
+                action: "swipe",
+                targetElement: nil,
+                reasoning: "Alternative action: swipe to reveal more content",
+                successProbability: SuccessProbability(
+                    value: 0.6,
+                    reasoning: "Swipe as fallback - moderate confidence"
+                ),
+                expectedOutcome: "More content should become visible"
+            )
+
+        case "tap":
+            guard let target = targetElement else {
+                throw CrawlerError.invalidDecision
+            }
+            return ExplorationDecision(
+                action: "tap",
+                targetElement: target,
+                reasoning: "Alternative action: tap '\(target)' as fallback",
+                successProbability: SuccessProbability(
+                    value: 0.7,
+                    reasoning: "Tap alternative with specific target"
+                ),
+                expectedOutcome: "Screen state should change after tapping '\(target)'"
+            )
+
+        case "type":
+            guard let target = targetElement else {
+                throw CrawlerError.invalidDecision
+            }
+            // Generate appropriate test text based on field name
+            let testText = generateTestTextFor(fieldId: target)
+            return ExplorationDecision(
+                action: "type",
+                targetElement: target,
+                reasoning: "Alternative action: type into '\(target)' as fallback",
+                successProbability: SuccessProbability(
+                    value: 0.7,
+                    reasoning: "Type alternative with specific target"
+                ),
+                textToType: testText,
+                expectedOutcome: "Field '\(target)' should contain '\(testText)'"
+            )
+
+        case "done":
+            return ExplorationDecision(
+                action: "done",
+                targetElement: nil,
+                reasoning: "Alternative action: end exploration",
+                successProbability: SuccessProbability(
+                    value: 1.0,
+                    reasoning: "Done as final fallback"
+                )
+            )
+
+        default:
+            // Unknown action - fallback to "done"
+            print("⚠️  Unknown alternative action '\(alternativeAction)', falling back to 'done'")
+            return ExplorationDecision(
+                action: "done",
+                targetElement: nil,
+                reasoning: "Unknown alternative action, ending exploration",
+                successProbability: SuccessProbability(
+                    value: 0.5,
+                    reasoning: "Fallback due to unknown alternative"
+                )
+            )
+        }
+    }
+
+    /// Generate appropriate test text for a given field identifier
+    private func generateTestTextFor(fieldId: String) -> String {
+        let lowercased = fieldId.lowercased()
+
+        if lowercased.contains("email") {
+            return "test@example.com"
+        } else if lowercased.contains("password") {
+            return "TestPassword123"
+        } else if lowercased.contains("phone") {
+            return "555-0100"
+        } else if lowercased.contains("name") {
+            return "Test User"
+        } else if lowercased.contains("search") {
+            return "test query"
+        } else {
+            return "test input"
+        }
     }
 }
 

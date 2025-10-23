@@ -23,13 +23,7 @@ final class AccessibilityScanIntegration: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         analyzer = HierarchyAnalyzer()
-
-        let expectation = XCTestExpectation(description: "Initialize Crawler")
-        Task {
-            crawler = try await AICrawler()
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 10.0)
+        crawler = try xcAwait { try await AICrawler() }
     }
 
     // MARK: - Approach 1: Using AICrawler Delegate
@@ -50,18 +44,12 @@ final class AccessibilityScanIntegration: XCTestCase {
 
             let hierarchy = analyzer.capture(from: app)
 
-            let expectation = XCTestExpectation(description: "AI Decision")
-            var decision: CrawlerDecision?
-            Task {
-                decision = try await crawler.decideNextActionWithChoices(
+            let decision = try xcAwait {
+                try await crawler.decideNextActionWithChoices(
                     hierarchy: hierarchy,
                     goal: "Explore app and verify accessibility"
                 )
-                expectation.fulfill()
             }
-            wait(for: [expectation], timeout: 30.0)
-
-            guard let decision = decision else { break }
             if decision.action == "done" { break }
 
             let succeeded = try executeAction(decision)
@@ -108,18 +96,12 @@ final class AccessibilityScanIntegration: XCTestCase {
             }
 
             // Continue exploration
-            let expectation = XCTestExpectation(description: "AI Decision")
-            var decision: CrawlerDecision?
-            Task {
-                decision = try await crawler.decideNextActionWithChoices(
+            let decision = try xcAwait {
+                try await crawler.decideNextActionWithChoices(
                     hierarchy: hierarchy,
                     goal: "Explore app"
                 )
-                expectation.fulfill()
             }
-            wait(for: [expectation], timeout: 30.0)
-
-            guard let decision = decision else { break }
             if decision.action == "done" { break }
 
             try executeAction(decision)
@@ -139,7 +121,7 @@ final class AccessibilityScanIntegration: XCTestCase {
 
     // MARK: - Helper Methods
 
-    private func executeAction(_ decision: CrawlerDecision) throws -> Bool {
+    private func executeAction(_ decision: ExplorationDecision) throws -> Bool {
         switch decision.action {
         case "tap":
             guard let target = decision.targetElement else { return false }

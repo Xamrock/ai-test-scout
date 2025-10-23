@@ -17,13 +17,7 @@ final class ScreenshotDiffIntegration: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         analyzer = HierarchyAnalyzer()
-
-        let expectation = XCTestExpectation(description: "Initialize Crawler")
-        Task {
-            crawler = try await AICrawler()
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 10.0)
+        crawler = try xcAwait { try await AICrawler() }
     }
 
     func testExplorationWithScreenshotDiff() throws {
@@ -40,15 +34,9 @@ final class ScreenshotDiffIntegration: XCTestCase {
 
             let hierarchy = analyzer.capture(from: app)
 
-            let expectation = XCTestExpectation(description: "AI Decision")
-            var decision: CrawlerDecision?
-            Task {
-                decision = try await crawler.decideNextActionWithChoices(hierarchy: hierarchy)
-                expectation.fulfill()
+            let decision = try xcAwait {
+                try await crawler.decideNextActionWithChoices(hierarchy: hierarchy)
             }
-            wait(for: [expectation], timeout: 30.0)
-
-            guard let decision = decision else { break }
             if decision.action == "done" { break }
 
             let succeeded = try executeAction(decision)
@@ -66,7 +54,7 @@ final class ScreenshotDiffIntegration: XCTestCase {
         XCTAssertEqual(regressions, 0, "Found \(regressions) visual regressions")
     }
 
-    private func executeAction(_ decision: CrawlerDecision) throws -> Bool {
+    private func executeAction(_ decision: ExplorationDecision) throws -> Bool {
         switch decision.action {
         case "tap":
             guard let target = decision.targetElement else { return false }

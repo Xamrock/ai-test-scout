@@ -27,6 +27,18 @@ public struct ExplorationResult: Sendable {
     /// Path to generated report file (if any)
     public let generatedReportFile: URL?
 
+    /// Number of action verifications performed
+    public let verificationsPerformed: Int
+
+    /// Number of verifications that passed
+    public let verificationsPassed: Int
+
+    /// Number of verifications that failed
+    public let verificationsFailed: Int
+
+    /// Number of retry attempts made with alternative actions
+    public let retryAttempts: Int
+
     /// Initialize exploration result
     public init(
         screensDiscovered: Int,
@@ -36,7 +48,11 @@ public struct ExplorationResult: Sendable {
         successfulActions: Int = 0,
         failedActions: Int = 0,
         generatedTestFile: URL? = nil,
-        generatedReportFile: URL? = nil
+        generatedReportFile: URL? = nil,
+        verificationsPerformed: Int = 0,
+        verificationsPassed: Int = 0,
+        verificationsFailed: Int = 0,
+        retryAttempts: Int = 0
     ) {
         self.screensDiscovered = screensDiscovered
         self.transitions = transitions
@@ -46,6 +62,10 @@ public struct ExplorationResult: Sendable {
         self.failedActions = failedActions
         self.generatedTestFile = generatedTestFile
         self.generatedReportFile = generatedReportFile
+        self.verificationsPerformed = verificationsPerformed
+        self.verificationsPassed = verificationsPassed
+        self.verificationsFailed = verificationsFailed
+        self.retryAttempts = retryAttempts
     }
 
     // MARK: - Computed Properties
@@ -66,16 +86,32 @@ public struct ExplorationResult: Sendable {
         failedActions > 0
     }
 
+    /// Verification success rate as a percentage (0-100)
+    public var verificationSuccessRate: Int {
+        guard verificationsPerformed > 0 else { return 0 }
+        return (verificationsPassed * 100) / verificationsPerformed
+    }
+
     /// Formatted summary string for console output
     public var summary: String {
-        """
-        📊 Exploration Summary:
-           • Screens: \(screensDiscovered)
-           • Transitions: \(transitions)
-           • Duration: \(Int(duration))s
-           • Success Rate: \(successRatePercent)% (\(successfulActions)/\(totalActions))
-           • Failures: \(failedActions)
-        """
+        var lines = [
+            "📊 Exploration Summary:",
+            "   • Screens: \(screensDiscovered)",
+            "   • Transitions: \(transitions)",
+            "   • Duration: \(Int(duration))s",
+            "   • Success Rate: \(successRatePercent)% (\(successfulActions)/\(totalActions))",
+            "   • Failures: \(failedActions)"
+        ]
+
+        // Add verification stats if any verifications were performed
+        if verificationsPerformed > 0 {
+            lines.append("   • Verification: \(verificationSuccessRate)% pass rate (\(verificationsPassed)/\(verificationsPerformed))")
+            if retryAttempts > 0 {
+                lines.append("   • Retries: \(retryAttempts)")
+            }
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Assertion Helpers

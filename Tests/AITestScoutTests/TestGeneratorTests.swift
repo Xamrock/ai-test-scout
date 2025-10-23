@@ -8,8 +8,8 @@ struct TestGeneratorTests {
 
     // MARK: - Mock LLM Client
 
-    final class MockLLMClient: LLMClient, @unchecked Sendable {
-        var mockResponse: String = """
+    actor MockLLMClient: LLMClient {
+        private var mockResponse: String = """
         import XCTest
 
         final class GeneratedTests: XCTestCase {
@@ -23,9 +23,9 @@ struct TestGeneratorTests {
             }
         }
         """
-        var capturedPrompts: [String] = []
-        var shouldFail = false
-        var callCount = 0
+        private var capturedPrompts: [String] = []
+        private var shouldFail = false
+        private var callCount = 0
 
         func generateCompletion(prompt: String, model: String?) async throws -> LLMResponse {
             capturedPrompts.append(prompt)
@@ -40,6 +40,27 @@ struct TestGeneratorTests {
                 model: model ?? "mock-model",
                 usage: TokenUsage(promptTokens: 100, completionTokens: 200, totalTokens: 300)
             )
+        }
+
+        // Public accessors and mutators for testing
+        func getCallCount() -> Int {
+            return callCount
+        }
+
+        func getCapturedPrompts() -> [String] {
+            return capturedPrompts
+        }
+
+        func getMockResponse() -> String {
+            return mockResponse
+        }
+
+        func setMockResponse(_ response: String) {
+            mockResponse = response
+        }
+
+        func setShouldFail(_ value: Bool) {
+            shouldFail = value
         }
     }
 
@@ -91,7 +112,7 @@ struct TestGeneratorTests {
         #expect(test.testName == "testLoginFlow")
         #expect(test.code.contains("XCUIApplication"))
         #expect(test.mode.isFlow)
-        #expect(client.callCount == 1)
+        #expect(await client.getCallCount() == 1)
     }
 
     @Test("TestGenerator should use flow prompt template")
@@ -105,8 +126,9 @@ struct TestGeneratorTests {
             screens: ["s1"]
         )
 
-        #expect(client.capturedPrompts.count == 1)
-        let prompt = client.capturedPrompts[0]
+        let prompts = await client.getCapturedPrompts()
+        #expect(prompts.count == 1)
+        let prompt = prompts[0]
         #expect(prompt.contains("Flow Path"))
         #expect(prompt.contains("testFlow"))
     }
@@ -122,7 +144,8 @@ struct TestGeneratorTests {
             screens: ["login", "dashboard", "settings"]
         )
 
-        let prompt = client.capturedPrompts[0]
+        let prompts = await client.getCapturedPrompts()
+        let prompt = prompts[0]
         #expect(prompt.contains("login"))
         #expect(prompt.contains("dashboard"))
         #expect(prompt.contains("settings"))
@@ -152,7 +175,7 @@ struct TestGeneratorTests {
 
         #expect(test.testName == "testHomeScreen")
         #expect(test.mode.isScreen)
-        #expect(client.callCount == 1)
+        #expect(await client.getCallCount() == 1)
     }
 
     @Test("TestGenerator should use screen prompt template")
@@ -166,7 +189,8 @@ struct TestGeneratorTests {
             fingerprint: "screen123"
         )
 
-        let prompt = client.capturedPrompts[0]
+        let prompts = await client.getCapturedPrompts()
+        let prompt = prompts[0]
         #expect(prompt.contains("screen"))
         #expect(prompt.contains("screen123"))
     }
@@ -192,7 +216,7 @@ struct TestGeneratorTests {
 
         #expect(test.testName == "ComprehensiveTests")
         #expect(test.mode.isFull)
-        #expect(client.callCount == 1)
+        #expect(await client.getCallCount() == 1)
     }
 
     @Test("TestGenerator should use full suite prompt template")
@@ -205,7 +229,8 @@ struct TestGeneratorTests {
             suiteName: "FullSuite"
         )
 
-        let prompt = client.capturedPrompts[0]
+        let prompts = await client.getCapturedPrompts()
+        let prompt = prompts[0]
         #expect(prompt.contains("comprehensive"))
         #expect(prompt.contains("FullSuite"))
     }
@@ -215,7 +240,7 @@ struct TestGeneratorTests {
     @Test("TestGenerator should handle LLM errors")
     func testHandlesLLMErrors() async throws {
         let client = MockLLMClient()
-        client.shouldFail = true
+        await client.setShouldFail(true)
         let generator = TestGenerator(llmClient: client)
 
         do {
@@ -248,7 +273,8 @@ struct TestGeneratorTests {
     @Test("TestGenerator should handle malformed JSON in response")
     func testHandlesMalformedJSON() async throws {
         let client = MockLLMClient()
-        client.mockResponse = "Not valid Swift code { malformed"
+        let malformedResponse = "Not valid Swift code { malformed"
+        await client.setMockResponse(malformedResponse)
         let generator = TestGenerator(llmClient: client)
 
         // Should still return the generated content
@@ -259,7 +285,7 @@ struct TestGeneratorTests {
         )
 
         // The generator returns whatever the LLM produces
-        #expect(test.code == client.mockResponse)
+        #expect(test.code == malformedResponse)
     }
 
     // MARK: - Model Selection Tests
@@ -277,7 +303,7 @@ struct TestGeneratorTests {
         )
 
         // Model should be passed to LLM client
-        #expect(client.callCount == 1)
+        #expect(await client.getCallCount() == 1)
     }
 
     @Test("TestGenerator should use default model if none specified")
@@ -291,7 +317,7 @@ struct TestGeneratorTests {
             screens: []
         )
 
-        #expect(client.callCount == 1)
+        #expect(await client.getCallCount() == 1)
     }
 
     // MARK: - Metadata Tests
@@ -427,7 +453,8 @@ struct TestGeneratorTests {
         #expect(test.metadata.screensCovered.count == 2)
 
         // Verify prompt was constructed correctly
-        let prompt = client.capturedPrompts[0]
+        let prompts = await client.getCapturedPrompts()
+        let prompt = prompts[0]
         #expect(prompt.contains("testUserCanLogIn"))
         #expect(prompt.contains("emailField"))
         #expect(prompt.contains("loginButton"))
@@ -457,7 +484,8 @@ struct TestGeneratorTests {
             screens: []
         )
 
-        let prompt = client.capturedPrompts[0]
+        let prompts = await client.getCapturedPrompts()
+        let prompt = prompts[0]
         #expect(prompt.contains("specialButton"))
     }
 
@@ -486,6 +514,6 @@ struct TestGeneratorTests {
         #expect(results.count == 2)
         #expect(results[0].testName == "test1")
         #expect(results[1].testName == "test2")
-        #expect(client.callCount == 2)
+        #expect(await client.getCallCount() == 2)
     }
 }

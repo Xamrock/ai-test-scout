@@ -135,7 +135,7 @@ struct AICrawlerDelegateTests {
         let crawler = try await AICrawler()
         crawler.delegate = delegate
 
-        var receivedDecision: CrawlerDecision?
+        var receivedDecision: ExplorationDecision?
         var receivedHierarchy: CompressedHierarchy?
         delegate.didMakeDecisionHandler = { decision, hierarchy in
             receivedDecision = decision
@@ -143,12 +143,11 @@ struct AICrawlerDelegateTests {
         }
 
         // Act
-        let testDecision = CrawlerDecision(
-            reasoning: "Test",
+        let testDecision = ExplorationDecision(
             action: "tap",
             targetElement: "testButton",
-            textToType: nil,
-            confidence: 90
+            reasoning: "Test",
+            successProbability: SuccessProbability(value: 0.9, reasoning: "High confidence")
         )
         let testHierarchy = CompressedHierarchy(
             elements: [],
@@ -270,12 +269,11 @@ struct AICrawlerDelegateTests {
         }
 
         // Act
-        let decision = CrawlerDecision(
-            reasoning: "Test",
+        let decision = ExplorationDecision(
             action: "tap",
             targetElement: "btn",
-            textToType: nil,
-            confidence: 90
+            reasoning: "Test",
+            successProbability: SuccessProbability(value: 0.9, reasoning: "High confidence")
         )
         let hierarchy = CompressedHierarchy(elements: [], screenshot: Data(), screenType: nil)
 
@@ -298,12 +296,11 @@ struct AICrawlerDelegateTests {
 
         // Act & Assert - Should not crash when calling optional methods
         let hierarchy = CompressedHierarchy(elements: [], screenshot: Data(), screenType: nil)
-        let decision = CrawlerDecision(
-            reasoning: "Test",
+        let decision = ExplorationDecision(
             action: "tap",
             targetElement: "btn",
-            textToType: nil,
-            confidence: 90
+            reasoning: "Test",
+            successProbability: SuccessProbability(value: 0.9, reasoning: "High confidence")
         )
         let action = Action(
             type: .tap,
@@ -355,7 +352,7 @@ struct AICrawlerDelegateTests {
 @available(iOS 26.0, macOS 26.0, *)
 private class TestCrawlerDelegate: AICrawlerDelegate {
     var willMakeDecisionHandler: ((CompressedHierarchy) -> Void)?
-    var didMakeDecisionHandler: ((CrawlerDecision, CompressedHierarchy) -> Void)?
+    var didMakeDecisionHandler: ((ExplorationDecision, CompressedHierarchy) -> Void)?
     var didDiscoverNewScreenHandler: ((String, CompressedHierarchy) -> Void)?
     var didRevisitScreenHandler: ((String, Int) -> Void)?
     var didRecordTransitionHandler: ((String, String, Action, TimeInterval) -> Void)?
@@ -366,7 +363,7 @@ private class TestCrawlerDelegate: AICrawlerDelegate {
         willMakeDecisionHandler?(hierarchy)
     }
 
-    func didMakeDecision(_ decision: CrawlerDecision, hierarchy: CompressedHierarchy) {
+    func didMakeDecision(_ decision: ExplorationDecision, hierarchy: CompressedHierarchy) {
         didMakeDecisionHandler?(decision, hierarchy)
     }
 

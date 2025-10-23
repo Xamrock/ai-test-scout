@@ -19,7 +19,7 @@ import Foundation
 ///         AccessibilityScanner.scan(hierarchy)
 ///     }
 ///
-///     func didMakeDecision(_ decision: CrawlerDecision, hierarchy: CompressedHierarchy) {
+///     func didMakeDecision(_ decision: ExplorationDecision, hierarchy: CompressedHierarchy) {
 ///         // Log decision to analytics
 ///         Analytics.track("AI Decision", decision: decision)
 ///     }
@@ -45,7 +45,7 @@ public protocol AICrawlerDelegate: AnyObject {
     ///   - decision: The decision the AI made
     ///   - hierarchy: The hierarchy that was analyzed
     /// - Note: Use this to log decisions, validate choices, or run custom analysis
-    func didMakeDecision(_ decision: CrawlerDecision, hierarchy: CompressedHierarchy)
+    func didMakeDecision(_ decision: ExplorationDecision, hierarchy: CompressedHierarchy)
 
     // MARK: - Screen Discovery
 
@@ -103,7 +103,7 @@ public protocol AICrawlerDelegate: AnyObject {
 public extension AICrawlerDelegate {
     func willMakeDecision(hierarchy: CompressedHierarchy) { }
 
-    func didMakeDecision(_ decision: CrawlerDecision, hierarchy: CompressedHierarchy) { }
+    func didMakeDecision(_ decision: ExplorationDecision, hierarchy: CompressedHierarchy) { }
 
     func didDiscoverNewScreen(_ fingerprint: String, hierarchy: CompressedHierarchy) { }
 

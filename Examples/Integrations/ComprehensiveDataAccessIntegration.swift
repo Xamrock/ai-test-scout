@@ -29,12 +29,7 @@ final class ComprehensiveDataAccessIntegration: XCTestCase {
         analyzer = HierarchyAnalyzer(configuration: config)
 
         // Initialize AI crawler
-        let expectation = XCTestExpectation(description: "Initialize AI Crawler")
-        Task {
-            crawler = try await AICrawler()
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 10.0)
+        crawler = try xcAwait { try await AICrawler() }
     }
 
     /// Example 1: Run comprehensive accessibility audit on ALL elements
@@ -103,38 +98,16 @@ final class ComprehensiveDataAccessIntegration: XCTestCase {
 
     // MARK: - Helper Methods
 
-    private func awaitDecision(hierarchy: CompressedHierarchy) throws -> CrawlerDecision {
-        let expectation = XCTestExpectation(description: "AI Decision")
-        var result: CrawlerDecision?
-        var error: Error?
-
-        Task {
-            do {
-                result = try await crawler.decideNextActionWithChoices(
-                    hierarchy: hierarchy,
-                    goal: "Explore and verify accessibility"
-                )
-                expectation.fulfill()
-            } catch let err {
-                error = err
-                expectation.fulfill()
-            }
+    private func awaitDecision(hierarchy: CompressedHierarchy) throws -> ExplorationDecision {
+        return try xcAwait {
+            try await crawler.decideNextActionWithChoices(
+                hierarchy: hierarchy,
+                goal: "Explore and verify accessibility"
+            )
         }
-
-        wait(for: [expectation], timeout: 30.0)
-
-        if let error = error {
-            throw error
-        }
-
-        guard let decision = result else {
-            throw NSError(domain: "AI", code: -1, userInfo: [NSLocalizedDescriptionKey: "No decision"])
-        }
-
-        return decision
     }
 
-    private func executeAction(_ decision: CrawlerDecision) throws -> Bool {
+    private func executeAction(_ decision: ExplorationDecision) throws -> Bool {
         switch decision.action {
         case "tap":
             guard let target = decision.targetElement else { return false }

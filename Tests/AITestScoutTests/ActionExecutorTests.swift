@@ -3,7 +3,7 @@ import Testing
 import XCTest
 @testable import AITestScout
 
-/// Tests for ActionExecutor - executes CrawlerDecisions on XCUIApplication
+/// Tests for ActionExecutor - executes ExplorationDecisions on XCUIApplication
 @Suite("ActionExecutor Tests")
 struct ActionExecutorTests {
 
@@ -33,12 +33,11 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should recognize tap action")
     func testRecognizesTapAction() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Test tap",
+        let decision = ExplorationDecision(
             action: "tap",
             targetElement: "testButton",
-            textToType: nil,
-            confidence: 80
+            reasoning: "Test tap",
+            successProbability: SuccessProbability(value: 0.8, reasoning: "Test")
         )
 
         #expect(decision.action == "tap")
@@ -47,12 +46,12 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should recognize type action")
     func testRecognizesTypeAction() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Test type",
+        let decision = ExplorationDecision(
             action: "type",
             targetElement: "emailField",
-            textToType: "test@example.com",
-            confidence: 80
+            reasoning: "Test type",
+            successProbability: SuccessProbability(value: 0.8, reasoning: "Test"),
+            textToType: "test@example.com"
         )
 
         #expect(decision.action == "type")
@@ -62,12 +61,10 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should recognize swipe action")
     func testRecognizesSwipeAction() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Test swipe",
+        let decision = ExplorationDecision(
             action: "swipe",
-            targetElement: nil,
-            textToType: nil,
-            confidence: 70
+            reasoning: "Test swipe",
+            successProbability: SuccessProbability(value: 0.7, reasoning: "Test")
         )
 
         #expect(decision.action == "swipe")
@@ -76,12 +73,10 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should recognize done action")
     func testRecognizesDoneAction() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Test done",
+        let decision = ExplorationDecision(
             action: "done",
-            targetElement: nil,
-            textToType: nil,
-            confidence: 100
+            reasoning: "Test done",
+            successProbability: SuccessProbability(value: 1.0, reasoning: "Done")
         )
 
         #expect(decision.action == "done")
@@ -91,12 +86,11 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should validate tap requires target")
     func testTapRequiresTarget() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Invalid tap",
+        let decision = ExplorationDecision(
             action: "tap",
             targetElement: nil,
-            textToType: nil,
-            confidence: 80
+            reasoning: "Invalid tap",
+            successProbability: SuccessProbability(value: 0.8, reasoning: "Test")
         )
 
         // Tap without target should be invalid
@@ -107,20 +101,19 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should validate type requires target and text")
     func testTypeRequiresTargetAndText() throws {
-        let decisionNoTarget = CrawlerDecision(
-            reasoning: "Invalid type - no target",
+        let decisionNoTarget = ExplorationDecision(
             action: "type",
             targetElement: nil,
-            textToType: "text",
-            confidence: 80
+            reasoning: "Invalid type - no target",
+            successProbability: SuccessProbability(value: 0.8, reasoning: "Test"),
+            textToType: "text"
         )
 
-        let decisionNoText = CrawlerDecision(
-            reasoning: "Invalid type - no text",
+        let decisionNoText = ExplorationDecision(
             action: "type",
             targetElement: "field",
-            textToType: nil,
-            confidence: 80
+            reasoning: "Invalid type - no text",
+            successProbability: SuccessProbability(value: 0.8, reasoning: "Test")
         )
 
         #expect(decisionNoTarget.targetElement == nil)
@@ -137,12 +130,11 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should return false for done action")
     func testReturnsFalseForDoneAction() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Done exploring",
+        let decision = ExplorationDecision(
             action: "done",
             targetElement: nil,
-            textToType: nil,
-            confidence: 100
+            reasoning: "Done exploring",
+            successProbability: SuccessProbability(value: 1.0, reasoning: "Done")
         )
 
         // Done action should return false to signal completion
@@ -153,12 +145,11 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should throw for unknown action")
     func testThrowsForUnknownAction() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Unknown action",
+        let decision = ExplorationDecision(
             action: "invalidAction",
             targetElement: nil,
-            textToType: nil,
-            confidence: 50
+            reasoning: "Unknown action",
+            successProbability: SuccessProbability(value: 0.5, reasoning: "Test")
         )
 
         #expect(decision.action == "invalidAction")
@@ -167,12 +158,11 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should throw for missing target element")
     func testThrowsForMissingTargetElement() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Tap without target",
+        let decision = ExplorationDecision(
             action: "tap",
             targetElement: nil,
-            textToType: nil,
-            confidence: 80
+            reasoning: "Tap without target",
+            successProbability: SuccessProbability(value: 0.8, reasoning: "Test")
         )
 
         #expect(decision.action == "tap")
@@ -182,12 +172,11 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should throw for missing text in type action")
     func testThrowsForMissingTextInTypeAction() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Type without text",
+        let decision = ExplorationDecision(
             action: "type",
             targetElement: "field",
-            textToType: nil,
-            confidence: 80
+            reasoning: "Type without text",
+            successProbability: SuccessProbability(value: 0.8, reasoning: "Test")
         )
 
         #expect(decision.action == "type")
@@ -199,12 +188,11 @@ struct ActionExecutorTests {
 
     @Test("ActionExecutor should use element identifier for finding")
     func testUsesElementIdentifier() throws {
-        let decision = CrawlerDecision(
-            reasoning: "Find by identifier",
+        let decision = ExplorationDecision(
             action: "tap",
             targetElement: "loginButton",
-            textToType: nil,
-            confidence: 90
+            reasoning: "Find by identifier",
+            successProbability: SuccessProbability(value: 0.9, reasoning: "Test")
         )
 
         #expect(decision.targetElement == "loginButton")
@@ -236,8 +224,8 @@ struct ActionExecutorTests {
     @Test("ActionExecutor execute method should have correct signature")
     func testExecuteMethodSignature() throws {
         // Verify method signature:
-        // func execute(_ decision: CrawlerDecision) throws -> Bool
-        #expect(true, "execute(_ decision: CrawlerDecision) throws -> Bool")
+        // func execute(_ decision: ExplorationDecision) throws -> Bool
+        #expect(true, "execute(_ decision: ExplorationDecision) throws -> Bool")
     }
 
     @Test("ActionExecutor should be thread-safe")

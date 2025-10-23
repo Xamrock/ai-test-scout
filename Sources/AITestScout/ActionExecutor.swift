@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 
-/// Executes CrawlerDecisions on XCUIApplication
+/// Executes ExplorationDecisions on XCUIApplication
 /// Wraps XCUIApplication element finding and interaction logic
 @available(macOS 26.0, iOS 26.0, *)
 @MainActor
@@ -18,11 +18,11 @@ public class ActionExecutor: @unchecked Sendable {
         self.waitTimeout = waitTimeout
     }
 
-    /// Execute a crawler decision
+    /// Execute an exploration decision
     /// - Parameter decision: The decision to execute
     /// - Returns: true if action was executed, false if "done"
     /// - Throws: ActionError if execution fails
-    public func execute(_ decision: CrawlerDecision) throws -> Bool {
+    public func execute(_ decision: ExplorationDecision) throws -> Bool {
         switch decision.action {
         case "tap":
             try executeTap(decision)
@@ -46,7 +46,7 @@ public class ActionExecutor: @unchecked Sendable {
 
     // MARK: - Private Execution Methods
 
-    private func executeTap(_ decision: CrawlerDecision) throws {
+    private func executeTap(_ decision: ExplorationDecision) throws {
         guard let target = decision.targetElement, !target.isEmpty else {
             throw ActionError.missingTarget
         }
@@ -64,7 +64,7 @@ public class ActionExecutor: @unchecked Sendable {
         element.tap()
     }
 
-    private func executeType(_ decision: CrawlerDecision) throws {
+    private func executeType(_ decision: ExplorationDecision) throws {
         guard let target = decision.targetElement, !target.isEmpty else {
             throw ActionError.missingTarget
         }

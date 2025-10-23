@@ -22,6 +22,35 @@ public struct ExplorationConfig: Sendable {
     /// Whether to show verbose console output
     public var verboseOutput: Bool
 
+    /// Temperature for language model sampling (0.0 = deterministic, 1.0 = creative)
+    /// Lower values make the model more focused and deterministic
+    /// Higher values increase randomness and creativity
+    /// Default: 0.7 (balanced)
+    /// Recommended for CI: 0.3 (more deterministic)
+    public var temperature: Double
+
+    /// Optional random seed for deterministic exploration
+    /// When set, enables reproducible explorations with the same seed
+    /// Useful for regression testing and debugging
+    /// Default: nil (non-deterministic)
+    /// Recommended for CI: 42 or any fixed value
+    public var seed: Int?
+
+    /// Top-p (nucleus) sampling parameter
+    /// Controls diversity by only sampling from top probability mass
+    /// Default: 0.9 (recommended)
+    public var topP: Double
+
+    /// Whether to enable post-action verification (Phase 3)
+    /// When enabled, verifies that actions achieved their expected outcomes
+    /// and retries with alternative actions when verification fails
+    /// Default: true
+    public var enableVerification: Bool
+
+    /// Maximum number of alternative actions to try when verification fails
+    /// Default: 2 (try primary + up to 2 alternatives)
+    public var maxRetries: Int
+
     /// Initialize with default configuration
     public init(
         steps: Int = 20,
@@ -29,7 +58,12 @@ public struct ExplorationConfig: Sendable {
         outputDirectory: URL? = nil,
         generateTests: Bool = true,
         failOnCriticalIssues: Bool = false,
-        verboseOutput: Bool = true
+        verboseOutput: Bool = true,
+        temperature: Double = 0.7,
+        seed: Int? = nil,
+        topP: Double = 0.9,
+        enableVerification: Bool = true,
+        maxRetries: Int = 2
     ) {
         self.steps = steps
         self.goal = goal
@@ -37,5 +71,34 @@ public struct ExplorationConfig: Sendable {
         self.generateTests = generateTests
         self.failOnCriticalIssues = failOnCriticalIssues
         self.verboseOutput = verboseOutput
+        // Clamp temperature to valid range [0.0, 1.0]
+        self.temperature = min(max(temperature, 0.0), 1.0)
+        self.seed = seed
+        // Clamp topP to valid range [0.0, 1.0]
+        self.topP = min(max(topP, 0.0), 1.0)
+        self.enableVerification = enableVerification
+        self.maxRetries = max(maxRetries, 0) // Ensure non-negative
+    }
+
+    /// Create a CI-friendly configuration with deterministic settings
+    ///
+    /// This preset uses:
+    /// - Low temperature (0.3) for more deterministic decisions
+    /// - Fixed seed (42) for reproducible explorations
+    /// - Standard topP (0.9)
+    ///
+    /// Usage:
+    /// ```swift
+    /// let config = ExplorationConfig.ciPreset(steps: 20, goal: "Regression test")
+    /// let result = try XamrockExplorer.explore(app, config: config)
+    /// ```
+    public static func ciPreset(steps: Int, goal: String) -> ExplorationConfig {
+        return ExplorationConfig(
+            steps: steps,
+            goal: goal,
+            temperature: 0.3,
+            seed: 42,
+            topP: 0.9
+        )
     }
 }

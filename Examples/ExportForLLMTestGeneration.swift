@@ -24,13 +24,7 @@ final class ExportForLLMTestGeneration: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         analyzer = HierarchyAnalyzer()
-
-        let expectation = XCTestExpectation(description: "Initialize Crawler")
-        Task {
-            crawler = try await AICrawler()
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 10.0)
+        crawler = try xcAwait { try await AICrawler() }
     }
 
     /// Complete example: Explore app and export comprehensive data for LLM test generation
@@ -50,18 +44,12 @@ final class ExportForLLMTestGeneration: XCTestCase {
             let hierarchy = analyzer.capture(from: app)
 
             // Get AI decision
-            let expectation = XCTestExpectation(description: "AI Decision")
-            var decision: CrawlerDecision?
-            Task {
-                decision = try await crawler.decideNextActionWithChoices(
+            let decision = try xcAwait {
+                try await crawler.decideNextActionWithChoices(
                     hierarchy: hierarchy,
                     goal: "Explore the app and test core features"
                 )
-                expectation.fulfill()
             }
-            wait(for: [expectation], timeout: 30.0)
-
-            guard let decision = decision else { break }
             if decision.action == "done" {
                 print("✅ Exploration complete")
                 break
@@ -176,7 +164,7 @@ final class ExportForLLMTestGeneration: XCTestCase {
 
     // MARK: - Helper Methods
 
-    private func executeAction(_ decision: CrawlerDecision) throws -> Bool {
+    private func executeAction(_ decision: ExplorationDecision) throws -> Bool {
         switch decision.action {
         case "tap":
             guard let target = decision.targetElement else { return false }

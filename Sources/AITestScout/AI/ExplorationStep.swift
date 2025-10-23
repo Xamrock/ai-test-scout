@@ -33,6 +33,12 @@ public struct ExplorationStep: Codable, Equatable {
     /// Whether this step was successful (element found and interacted)
     public var wasSuccessful: Bool
 
+    /// Optional verification result for this step (Phase 3)
+    public let verificationResult: VerificationResult?
+
+    /// Whether this step was a retry attempt from a failed verification
+    public let wasRetry: Bool
+
     public init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
@@ -43,7 +49,9 @@ public struct ExplorationStep: Codable, Equatable {
         interactiveElementCount: Int,
         reasoning: String,
         confidence: Int,
-        wasSuccessful: Bool = true
+        wasSuccessful: Bool = true,
+        verificationResult: VerificationResult? = nil,
+        wasRetry: Bool = false
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -55,13 +63,17 @@ public struct ExplorationStep: Codable, Equatable {
         self.reasoning = reasoning
         self.confidence = confidence
         self.wasSuccessful = wasSuccessful
+        self.verificationResult = verificationResult
+        self.wasRetry = wasRetry
     }
 
-    /// Creates an ExplorationStep from a CrawlerDecision
+    /// Creates an ExplorationStep from an ExplorationDecision
     public static func from(
-        decision: CrawlerDecision,
+        decision: ExplorationDecision,
         hierarchy: CompressedHierarchy,
-        wasSuccessful: Bool = true
+        wasSuccessful: Bool = true,
+        verificationResult: VerificationResult? = nil,
+        wasRetry: Bool = false
     ) -> ExplorationStep {
         // Generate screen description from interactive elements
         let interactiveElements = hierarchy.elements.filter { $0.interactive }
@@ -86,7 +98,9 @@ public struct ExplorationStep: Codable, Equatable {
             interactiveElementCount: interactiveElements.count,
             reasoning: decision.reasoning,
             confidence: decision.confidence,
-            wasSuccessful: wasSuccessful
+            wasSuccessful: wasSuccessful,
+            verificationResult: verificationResult,
+            wasRetry: wasRetry
         )
     }
 

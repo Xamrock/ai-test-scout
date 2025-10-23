@@ -113,19 +113,23 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
         let startTime = Date()
 
         // Exploration loop - run on MainActor for UI operations
-        let (duration, stats) = try testCase.xcAwait {
+        let (duration, stats, verificationStats) = try testCase.xcAwait {
             try await Task { @MainActor in
                 var localDuration: TimeInterval = 0
                 var localStats: CoverageStats?
+                var verificationsPerformed = 0
+                var verificationsPassed = 0
+                var verificationsFailed = 0
+                var retryAttempts = 0
 
                 do {
                     for stepNumber in 1...config.steps {
                         // 1. REUSES: analyzer.capture() (existing, MainActor-isolated)
-                        let hierarchy = analyzer.capture(from: app)
+                        let beforeHierarchy = analyzer.capture(from: app)
 
                         // 2. REUSES: crawler.decideNextActionWithChoices() (existing)
                         let decision = try await crawler.decideNextActionWithChoices(
-                            hierarchy: hierarchy,
+                            hierarchy: beforeHierarchy,
                             goal: config.goal
                         )
 
@@ -135,24 +139,91 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
                             break
                         }
 
-                        // 4. REUSES: executor.execute() (wraps XCUIApplication)
-                        // Wrapped in try-catch to continue exploration even when actions fail
-                        let actionSuccessful: Bool
-                        do {
-                            actionSuccessful = try executor.execute(decision)
-                        } catch {
-                            // Catch all errors (ActionError and XCUIElement runtime errors)
-                            let errorMessage = (error as? ActionError)?.localizedDescription ?? error.localizedDescription
-                            print("⚠️  Action failed: \(errorMessage)")
-                            crawler.markLastStepFailed(reason: errorMessage)
-                            actionSuccessful = false
-                            // Continue to next iteration instead of stopping
+                        // 4. Execute action with verification and retry logic (Phase 3)
+                        var currentDecision = decision
+                        var actionSuccessful = false
+                        var verificationResult: VerificationResult? = nil
+                        var attemptNumber = 0
+                        let maxAttempts = config.enableVerification ? 1 + config.maxRetries : 1
+
+                        while attemptNumber < maxAttempts {
+                            // 4a. Execute the action
+                            do {
+                                actionSuccessful = try executor.execute(currentDecision)
+                            } catch {
+                                // Catch all errors (ActionError and XCUIElement runtime errors)
+                                let errorMessage = (error as? ActionError)?.localizedDescription ?? error.localizedDescription
+                                print("⚠️  Action failed: \(errorMessage)")
+                                crawler.markLastStepFailed(reason: errorMessage)
+                                actionSuccessful = false
+                                // Action execution failure - don't verify, break retry loop
+                                break
+                            }
+
+                            // 4b. If action executed successfully, wait for UI to settle
+                            if actionSuccessful {
+                                try await Task.sleep(nanoseconds: 1_000_000_000)
+                            }
+
+                            // 4c. Verify action outcome (Phase 3)
+                            if config.enableVerification && actionSuccessful {
+                                let afterHierarchy = analyzer.capture(from: app)
+
+                                verificationResult = crawler.verifyAction(
+                                    decision: currentDecision,
+                                    beforeHierarchy: beforeHierarchy,
+                                    afterHierarchy: afterHierarchy
+                                )
+
+                                verificationsPerformed += 1
+
+                                if verificationResult!.passed {
+                                    verificationsPassed += 1
+                                    // Success! Break the retry loop
+                                    break
+                                } else {
+                                    verificationsFailed += 1
+
+                                    if config.verboseOutput {
+                                        print("⚠️  Verification failed: \(verificationResult!.reason)")
+                                    }
+
+                                    // Try next alternative if available
+                                    attemptNumber += 1
+                                    if attemptNumber < maxAttempts,
+                                       attemptNumber - 1 < currentDecision.alternativeActions.count {
+                                        retryAttempts += 1
+                                        let alternativeAction = currentDecision.alternativeActions[attemptNumber - 1]
+
+                                        if config.verboseOutput {
+                                            print("🔄 Retrying with alternative: \(alternativeAction)")
+                                        }
+
+                                        // Convert alternative to decision
+                                        currentDecision = try await crawler.convertAlternativeToDecision(
+                                            alternativeAction,
+                                            context: afterHierarchy
+                                        )
+                                    } else {
+                                        // No more alternatives, accept the failure
+                                        break
+                                    }
+                                }
+                            } else {
+                                // Verification disabled or action failed - exit retry loop
+                                break
+                            }
                         }
 
-                        // 5. Wait for UI to settle if action was executed
-                        if actionSuccessful {
-                            try await Task.sleep(nanoseconds: 1_000_000_000)
-                        }
+                        // 5. Record step with verification result
+                        let step = ExplorationStep.from(
+                            decision: currentDecision,
+                            hierarchy: beforeHierarchy,
+                            wasSuccessful: actionSuccessful && (verificationResult?.passed ?? true),
+                            verificationResult: verificationResult,
+                            wasRetry: attemptNumber > 0
+                        )
+                        crawler.explorationPath?.addStep(step)
                     }
 
                     // Calculate duration and get stats
@@ -165,7 +236,11 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
                     throw error
                 }
 
-                return (localDuration, localStats!)
+                return (
+                    localDuration,
+                    localStats!,
+                    (verificationsPerformed, verificationsPassed, verificationsFailed, retryAttempts)
+                )
             }.value
         }
 
@@ -213,7 +288,11 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
             successfulActions: successfulActions,
             failedActions: failedActions,
             generatedTestFile: testFileURL,
-            generatedReportFile: reportFileURL
+            generatedReportFile: reportFileURL,
+            verificationsPerformed: verificationStats.0,
+            verificationsPassed: verificationStats.1,
+            verificationsFailed: verificationStats.2,
+            retryAttempts: verificationStats.3
         )
 
         // Show summary output if verbose
@@ -261,8 +340,17 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print()
         print("✅ Coverage: \(result.screensDiscovered) screens, \(result.transitions) transitions")
-        print("⏱️  Duration: \(Int(result.duration))s")
+        print("⏱️ Duration: \(Int(result.duration))s")
         print("🎯 Success Rate: \(result.successRatePercent)% (\(result.successfulActions)/\(result.totalActions) actions)")
+
+        // Show verification metrics (Phase 3)
+        if config.enableVerification && result.verificationsPerformed > 0 {
+            print()
+            print("🔍 Verification: \(result.verificationSuccessRate)% pass rate (\(result.verificationsPassed)/\(result.verificationsPerformed))")
+            if result.retryAttempts > 0 {
+                print("🔄 Retries: \(result.retryAttempts) alternative actions attempted")
+            }
+        }
 
         if result.hasCriticalFailures {
             print()

@@ -185,7 +185,7 @@ public class ExplorationPath: Codable {
         return """
         🎯 Goal: \(goal)
         📅 Session: \(sessionId.uuidString.prefix(8))...
-        ⏱️  Duration: \(Int(duration))s
+        ⏱️ Duration: \(Int(duration))s
         📊 Total Steps: \(steps.count)
         ✅ Successful: \(successful)
         ❌ Failed: \(failed)
