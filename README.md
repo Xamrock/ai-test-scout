@@ -203,7 +203,6 @@ try result.assertNoCriticalIssues()
 
 ## Community & Support
 
-- **Docs:** Full documentation in `/Examples`
 - **Issues:** GitHub Issues for bugs and features
 - **Discussions:** GitHub Discussions for questions
 
