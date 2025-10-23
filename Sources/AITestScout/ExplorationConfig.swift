@@ -16,6 +16,14 @@ public struct ExplorationConfig: Sendable {
     /// Whether to generate test files automatically
     public var generateTests: Bool
 
+    /// Whether to generate an interactive HTML dashboard
+    /// Default: true (dashboard auto-opens in browser)
+    public var generateDashboard: Bool
+
+    /// Whether to automatically open the dashboard in the default browser
+    /// Default: true (requires generateDashboard to be enabled)
+    public var autoOpenDashboard: Bool
+
     /// Whether to fail the test if critical issues are found
     public var failOnCriticalIssues: Bool
 
@@ -57,6 +65,8 @@ public struct ExplorationConfig: Sendable {
         goal: String = "Explore the app systematically",
         outputDirectory: URL? = nil,
         generateTests: Bool = true,
+        generateDashboard: Bool = true,
+        autoOpenDashboard: Bool = true,
         failOnCriticalIssues: Bool = false,
         verboseOutput: Bool = true,
         temperature: Double = 0.7,
@@ -69,6 +79,8 @@ public struct ExplorationConfig: Sendable {
         self.goal = goal
         self.outputDirectory = outputDirectory
         self.generateTests = generateTests
+        self.generateDashboard = generateDashboard
+        self.autoOpenDashboard = autoOpenDashboard
         self.failOnCriticalIssues = failOnCriticalIssues
         self.verboseOutput = verboseOutput
         // Clamp temperature to valid range [0.0, 1.0]

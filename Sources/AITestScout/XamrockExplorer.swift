@@ -250,6 +250,7 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
         // Generate test files if configured and there were failures
         var testFileURL: URL?
         var reportFileURL: URL?
+        var dashboardURL: URL?
 
         if config.generateTests, let explorationPath = crawler.explorationPath, failedActions > 0 {
             do {
@@ -295,6 +296,54 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
             retryAttempts: verificationStats.3
         )
 
+        // Generate interactive HTML dashboard
+        if config.generateDashboard {
+            do {
+                let outputDir: URL
+                if let testFile = testFileURL {
+                    // Use same directory as tests
+                    outputDir = testFile.deletingLastPathComponent()
+                } else if let explorationPath = crawler.explorationPath {
+                    // Create directory even if no tests generated
+                    outputDir = try determineOutputDirectory(
+                        configured: config.outputDirectory,
+                        sessionId: explorationPath.sessionId
+                    )
+                    try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+                } else {
+                    // Fallback to temp directory
+                    outputDir = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("AITestScoutExplorations")
+                        .appendingPathComponent(UUID().uuidString)
+                    try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+                }
+
+                // Generate dashboard HTML
+                let dashboardGenerator = DashboardGenerator()
+                let testCode = testFileURL != nil ? try? String(contentsOf: testFileURL!, encoding: .utf8) : nil
+                let htmlContent = dashboardGenerator.generate(
+                    result: result,
+                    generatedTestCode: testCode,
+                    steps: crawler.explorationPath?.steps
+                )
+
+                // Save dashboard
+                dashboardURL = outputDir.appendingPathComponent("dashboard.html")
+                try htmlContent.write(to: dashboardURL!, atomically: true, encoding: String.Encoding.utf8)
+
+                if config.verboseOutput {
+                    print("   Dashboard: \(dashboardURL!.path)")
+                }
+
+                // Auto-open dashboard in browser
+                if config.autoOpenDashboard {
+                    openInBrowser(url: dashboardURL!)
+                }
+            } catch {
+                print("⚠️  Failed to generate dashboard: \(error)")
+            }
+        }
+
         // Show summary output if verbose
         if config.verboseOutput {
             printExplorationSummary(result: result, config: config)
@@ -331,6 +380,27 @@ public class XamrockExplorer: XCTestCase, @unchecked Sendable {
         let sessionFolder = "\(timestamp)_\(sessionId.uuidString.prefix(8))"
 
         return tempBase.appendingPathComponent(sessionFolder)
+    }
+
+    /// Opens a URL in the default system browser
+    /// - Parameter url: The URL to open
+    nonisolated private static func openInBrowser(url: URL) {
+        #if os(macOS)
+        // macOS: use 'open' command
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = [url.path]
+        try? task.run()
+        #elseif os(Linux)
+        // Linux: use 'xdg-open' command
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
+        task.arguments = [url.path]
+        try? task.run()
+        #else
+        // iOS/other: print URL (can't auto-open in simulator/device)
+        print("🌐 Dashboard URL: \(url.absoluteString)")
+        #endif
     }
 
     /// Print a formatted exploration summary for EMs
