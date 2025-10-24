@@ -3,27 +3,27 @@ import Testing
 import XCTest
 @testable import AITestScout
 
-/// Tests for XamrockExplorer - the high-level facade API
-@Suite("XamrockExplorer Tests")
+/// Tests for Scout - the high-level facade API
+@Suite("Scout Tests")
 @MainActor
-struct XamrockExplorerTests {
+struct ScoutTests {
 
     // MARK: - API Design Tests
 
-    @Test("XamrockExplorer should have static explore method")
+    @Test("Scout should have static explore method")
     func testStaticExploreMethod() throws {
         // Method signature: static func explore(_ app: XCUIApplication, steps: Int, goal: String) throws -> ExplorationResult
         #expect(Bool(true), "Should have static explore method")
     }
 
-    @Test("XamrockExplorer explore should have default parameters")
+    @Test("Scout explore should have default parameters")
     func testExploreDefaultParameters() throws {
         // steps: Int = 20
         // goal: String = "Explore the app systematically"
         #expect(Bool(true), "Should have sensible defaults")
     }
 
-    @Test("XamrockExplorer should return ExplorationResult")
+    @Test("Scout should return ExplorationResult")
     func testExploreReturnsResult() throws {
         // Return type should include:
         // - screensDiscovered: Int
@@ -33,7 +33,7 @@ struct XamrockExplorerTests {
         #expect(Bool(true), "Should return comprehensive result")
     }
 
-    @Test("XamrockExplorer should provide access to last result")
+    @Test("Scout should provide access to last result")
     func testProvidesLastResult() throws {
         // static var lastResult: ExplorationResult? { get }
         #expect(Bool(true), "Should provide static access to last result")
@@ -41,7 +41,7 @@ struct XamrockExplorerTests {
 
     // MARK: - Integration Tests (Conceptual)
 
-    @Test("XamrockExplorer should orchestrate existing components")
+    @Test("Scout should orchestrate existing components")
     func testOrchestratesExistingComponents() throws {
         // Should internally use:
         // - HierarchyAnalyzer (existing)
@@ -51,7 +51,7 @@ struct XamrockExplorerTests {
         #expect(Bool(true), "Should reuse existing components")
     }
 
-    @Test("XamrockExplorer should handle exploration loop")
+    @Test("Scout should handle exploration loop")
     func testHandlesExplorationLoop() throws {
         // For each step:
         // 1. Capture hierarchy
@@ -62,7 +62,7 @@ struct XamrockExplorerTests {
         #expect(Bool(true), "Should manage exploration loop")
     }
 
-    @Test("XamrockExplorer should collect stats")
+    @Test("Scout should collect stats")
     func testCollectsStats() throws {
         // Should track:
         // - Number of screens discovered
@@ -71,13 +71,13 @@ struct XamrockExplorerTests {
         #expect(Bool(true), "Should collect exploration statistics")
     }
 
-    @Test("XamrockExplorer should stop at max steps")
+    @Test("Scout should stop at max steps")
     func testStopsAtMaxSteps() throws {
         // Should respect the steps parameter
         #expect(Bool(true), "Should stop after specified steps")
     }
 
-    @Test("XamrockExplorer should stop on done action")
+    @Test("Scout should stop on done action")
     func testStopsOnDoneAction() throws {
         // If AI returns 'done', should exit early
         #expect(Bool(true), "Should stop when AI signals done")
@@ -85,7 +85,7 @@ struct XamrockExplorerTests {
 
     // MARK: - Error Handling Tests
 
-    @Test("XamrockExplorer should propagate errors")
+    @Test("Scout should propagate errors")
     func testPropagatesErrors() throws {
         // Should throw if:
         // - AICrawler initialization fails
@@ -129,13 +129,13 @@ struct XamrockExplorerTests {
 
     // MARK: - Usage Pattern Tests
 
-    @Test("XamrockExplorer should enable one-line usage")
+    @Test("Scout should enable one-line usage")
     func testEnablesOneLineUsage() throws {
-        // try XamrockExplorer.explore(app, steps: 10)
+        // try Scout.explore(app, steps: 10)
         #expect(Bool(true), "Should work in one line")
     }
 
-    @Test("XamrockExplorer should eliminate boilerplate")
+    @Test("Scout should eliminate boilerplate")
     func testEliminatesBoilerplate() throws {
         // Before: 35+ lines
         // After: 1 line

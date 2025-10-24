@@ -3,8 +3,8 @@ import Foundation
 import XCTest
 @testable import AITestScout
 
-@Suite("XamrockExplorer Verification Integration Tests")
-struct XamrockExplorerVerificationTests {
+@Suite("Scout Verification Integration Tests")
+struct ScoutVerificationTests {
 
     // MARK: - Verification Loop Integration Tests
 

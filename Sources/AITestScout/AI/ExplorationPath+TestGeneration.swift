@@ -119,8 +119,8 @@ extension ExplorationPath {
         var suite = """
         import XCTest
 
-        /// Auto-generated UI test suite from AITestScout by Xamrock
-        /// Learn more: https://xamrock.com/ai-test-scout
+        /// Auto-generated UI test suite from AITestScout
+        /// https://github.com/xamrock/ai-test-scout
         ///
         /// Session: \(sessionId)
         /// Goal: \(goal)

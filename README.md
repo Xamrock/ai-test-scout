@@ -6,7 +6,7 @@ Stop writing boilerplate UI tests. AITestScout explores your iOS app autonomousl
 
 ```swift
 // One line to explore your app with AI
-let result = try XamrockExplorer.explore(app, steps: 20)
+let result = try Scout.explore(app, steps: 20)
 
 // Tests are automatically generated when failures are detected
 print("Discovered \(result.screensDiscovered) screens")
@@ -27,7 +27,7 @@ final class AIExplorationTests: XCTestCase {
         app.launch()
 
         // AI explores your app autonomously
-        let result = try XamrockExplorer.explore(app, steps: 20)
+        let result = try Scout.explore(app, steps: 20)
 
         // Verify exploration completed successfully
         try result.assertDiscovered(minScreens: 3)
@@ -99,7 +99,7 @@ Or in Xcode: **File → Add Package Dependencies**
 **Exploration with Goal:**
 
 ```swift
-let result = try XamrockExplorer.explore(
+let result = try Scout.explore(
     app,
     steps: 30,
     goal: "Test the checkout flow"
@@ -122,7 +122,7 @@ let config = ExplorationConfig(
     verboseOutput: true
 )
 
-let result = try XamrockExplorer.explore(app, config: config)
+let result = try Scout.explore(app, config: config)
 print(result.summary)
 ```
 
@@ -130,7 +130,7 @@ print(result.summary)
 
 ```swift
 // Run exploration
-let result = try XamrockExplorer.explore(app, steps: 20)
+let result = try Scout.explore(app, steps: 20)
 
 // Access detailed metrics
 print("Screens: \(result.screensDiscovered)")
@@ -148,7 +148,7 @@ if let reportFile = result.generatedReportFile {
 }
 
 // Access from static property
-if let lastResult = XamrockExplorer.lastResult {
+if let lastResult = Scout.lastResult {
     print("Last exploration: \(lastResult.screensDiscovered) screens")
 }
 ```
@@ -156,7 +156,7 @@ if let lastResult = XamrockExplorer.lastResult {
 **Assertion Helpers:**
 
 ```swift
-let result = try XamrockExplorer.explore(app, steps: 15)
+let result = try Scout.explore(app, steps: 15)
 
 // Built-in assertions for test validation
 try result.assertDiscovered(minScreens: 3)

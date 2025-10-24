@@ -102,7 +102,7 @@ public struct ExplorationConfig: Sendable {
     /// Usage:
     /// ```swift
     /// let config = ExplorationConfig.ciPreset(steps: 20, goal: "Regression test")
-    /// let result = try XamrockExplorer.explore(app, config: config)
+    /// let result = try Scout.explore(app, config: config)
     /// ```
     public static func ciPreset(steps: Int, goal: String) -> ExplorationConfig {
         return ExplorationConfig(
