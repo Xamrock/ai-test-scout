@@ -37,6 +37,33 @@ private struct PrioritizedElement: Comparable {
     }
 }
 
+/// Cached XCUIElement properties to minimize redundant queries
+/// Each XCUIElement property access triggers a separate XCUITest query,
+/// so we capture all properties in one pass to reduce query volume by ~80%
+private struct CachedElement {
+    let element: XCUIElement
+    let identifier: String
+    let label: String
+    let elementType: XCUIElement.ElementType
+    let exists: Bool
+    let value: Any?
+    let isEnabled: Bool
+    let frame: CGRect
+
+    @MainActor
+    init(from element: XCUIElement) {
+        self.element = element
+        // Capture all properties in one pass to minimize XCUITest queries
+        self.exists = element.exists
+        self.identifier = element.identifier
+        self.label = element.label
+        self.elementType = element.elementType
+        self.value = element.value
+        self.isEnabled = element.isEnabled
+        self.frame = element.frame
+    }
+}
+
 /// Analyzes XCUITest element hierarchies and produces compressed, AI-friendly output
 @MainActor
 public class HierarchyAnalyzer {
@@ -62,6 +89,9 @@ public class HierarchyAnalyzer {
     /// Optional delegate for customizing hierarchy capture behavior
     nonisolated(unsafe) private weak var delegate: HierarchyAnalyzerDelegate?
 
+    /// Whether to capture detailed element context (queries, frame, state)
+    private let captureElementContext: Bool
+
     /// Element contexts captured during hierarchy analysis (for LLM export)
     /// Keyed by element identifier: "type|id|label"
     nonisolated(unsafe) private var elementContextMap: [String: ElementContext] = [:]
@@ -81,6 +111,7 @@ public class HierarchyAnalyzer {
         self.categorizer = configuration.categorizer
         self.semanticAnalyzer = configuration.semanticAnalyzer
         self.delegate = configuration.delegate
+        self.captureElementContext = configuration.captureElementContext
     }
 
     /// Initialize with individual parameters (backward compatibility)
@@ -201,19 +232,22 @@ public class HierarchyAnalyzer {
             for i in 0..<count {
                 let element = elements.element(boundBy: i)
 
+                // Cache element properties in one pass to minimize XCUITest queries
+                let cached = CachedElement(from: element)
+
                 // Skip if element doesn't exist
-                guard element.exists else { continue }
+                guard cached.exists else { continue }
 
                 // Skip system UI elements
                 guard !categorizer.shouldSkip(elementType) else { continue }
 
                 // Skip keyboard elements
-                if excludeKeyboard && keyboardPresent && isKeyboardElement(element) {
+                if excludeKeyboard && keyboardPresent && isKeyboardElement(cached) {
                     continue
                 }
 
                 // Create minimal element and calculate priority
-                let minimalElement = createMinimalElement(from: element)
+                let minimalElement = createMinimalElement(from: cached)
 
                 // Only include if it has meaningful content
                 guard shouldInclude(minimalElement) else { continue }
@@ -237,19 +271,22 @@ public class HierarchyAnalyzer {
         // These provide context (e.g., screen titles, important labels with IDs)
         let identifiedElements = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier != ''"))
-        let idCount = identifiedElements.count
+        let idCount = min(identifiedElements.count, 30)  // Limit Phase 2 to 30 elements for performance
 
         for i in 0..<idCount {
             let element = identifiedElements.element(boundBy: i)
 
-            guard element.exists else { continue }
-            guard !categorizer.shouldSkip(element.elementType) else { continue }
+            // Cache element properties in one pass to minimize XCUITest queries
+            let cached = CachedElement(from: element)
 
-            if excludeKeyboard && keyboardPresent && isKeyboardElement(element) {
+            guard cached.exists else { continue }
+            guard !categorizer.shouldSkip(cached.elementType) else { continue }
+
+            if excludeKeyboard && keyboardPresent && isKeyboardElement(cached) {
                 continue
             }
 
-            let minimalElement = createMinimalElement(from: element)
+            let minimalElement = createMinimalElement(from: cached)
 
             guard shouldInclude(minimalElement) else { continue }
 
@@ -287,10 +324,13 @@ public class HierarchyAnalyzer {
 
         // Capture detailed context for top 50 elements only (major optimization!)
         // This reduces context capture from ~300 elements to just 50
-        for (index, element) in topElements.enumerated() {
-            // Re-query the element from the app for context capture
-            if let xcuiElement = findElementForContext(element, in: app) {
-                _ = captureElementContext(from: xcuiElement, minimalElement: element, index: index)
+        // Skip entirely if captureElementContext is false (saves ~400-500 queries)
+        if captureElementContext {
+            for (index, element) in topElements.enumerated() {
+                // Re-query the element from the app for context capture
+                if let xcuiElement = findElementForContext(element, in: app) {
+                    _ = captureElementContext(from: xcuiElement, minimalElement: element, index: index)
+                }
             }
         }
 
@@ -324,12 +364,12 @@ public class HierarchyAnalyzer {
     }
 
     /// Checks if an element is part of the keyboard hierarchy
-    /// - Parameter element: The XCUIElement to check
+    /// - Parameter cached: The cached element to check
     /// - Returns: True if the element is part of the keyboard
     @MainActor
-    private func isKeyboardElement(_ element: XCUIElement) -> Bool {
+    private func isKeyboardElement(_ cached: CachedElement) -> Bool {
         // Check if element identifier contains keyboard-related strings
-        let identifier = element.identifier.lowercased()
+        let identifier = cached.identifier.lowercased()
         let keyboardIdentifiers = ["keyboard", "autocorrection", "prediction", "emoji"]
 
         for keyboardId in keyboardIdentifiers {
@@ -339,7 +379,7 @@ public class HierarchyAnalyzer {
         }
 
         // Check if element label suggests it's a keyboard key
-        let label = element.label.lowercased()
+        let label = cached.label.lowercased()
         if label.count == 1 {
             // Single character labels are likely keyboard keys
             return true
@@ -357,20 +397,20 @@ public class HierarchyAnalyzer {
         return false
     }
 
-    /// Creates a MinimalElement from an XCUIElement
-    /// - Parameter element: The XCUIElement to convert
+    /// Creates a MinimalElement from cached element properties
+    /// - Parameter cached: The cached element properties
     /// - Returns: A MinimalElement representation
     @MainActor
-    private func createMinimalElement(from element: XCUIElement) -> MinimalElement {
-        let category = categorizer.categorize(element.elementType)
+    private func createMinimalElement(from cached: CachedElement) -> MinimalElement {
+        let category = categorizer.categorize(cached.elementType)
 
         // Capture current value for interactive elements (helps AI understand state)
         var value: String? = nil
         if category.interactive {
-            // Get value from element.value (for inputs, toggles, sliders, etc.)
-            if let elementValue = element.value as? String, !elementValue.isEmpty {
+            // Get value from cached.value (for inputs, toggles, sliders, etc.)
+            if let elementValue = cached.value as? String, !elementValue.isEmpty {
                 value = elementValue
-            } else if let elementValue = element.value as? NSNumber {
+            } else if let elementValue = cached.value as? NSNumber {
                 // For toggles (0/1) and sliders (numeric values)
                 value = elementValue.stringValue
             }
@@ -384,8 +424,8 @@ public class HierarchyAnalyzer {
         var priority: Int? = nil
 
         if useSemanticAnalysis, let analyzer = semanticAnalyzer {
-            let id = element.identifier.isEmpty ? nil : element.identifier
-            let label = element.label.isEmpty ? nil : element.label
+            let id = cached.identifier.isEmpty ? nil : cached.identifier
+            let label = cached.label.isEmpty ? nil : cached.label
 
             let detectedIntent = analyzer.detectIntent(label: label, identifier: id)
             intent = detectedIntent == .neutral ? nil : detectedIntent
@@ -404,8 +444,8 @@ public class HierarchyAnalyzer {
 
         return MinimalElement(
             type: elementType,
-            id: element.identifier.isEmpty ? nil : element.identifier,
-            label: element.label.isEmpty ? nil : element.label,
+            id: cached.identifier.isEmpty ? nil : cached.identifier,
+            label: cached.label.isEmpty ? nil : cached.label,
             interactive: category.interactive,
             value: value,
             intent: intent,

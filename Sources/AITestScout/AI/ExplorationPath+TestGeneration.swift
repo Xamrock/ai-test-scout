@@ -173,6 +173,8 @@ extension ExplorationPath {
     // MARK: - Test Suite Export
 
     /// Save the test suite to a Swift file
+    /// - Important: The generated Swift file contains valid, compilable Swift code.
+    ///   Do NOT copy code from the HTML dashboard source - use this file directly.
     public func saveTestSuite(to url: URL, className: String = "GeneratedUITests") throws {
         let suite = generateComprehensiveTestSuite(className: className)
         try suite.write(to: url, atomically: true, encoding: .utf8)

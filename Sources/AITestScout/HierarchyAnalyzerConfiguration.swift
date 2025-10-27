@@ -23,6 +23,11 @@ public struct HierarchyAnalyzerConfiguration {
     /// Optional delegate for customizing hierarchy capture behavior
     public weak var delegate: HierarchyAnalyzerDelegate?
 
+    /// Whether to capture detailed element context (queries, frame, state)
+    /// Set to false to skip expensive context capture when not generating tests
+    /// Reduces ~400-500 XCUITest queries per capture when disabled
+    public var captureElementContext: Bool
+
     /// Initialize with default configuration
     public init(
         maxDepth: Int = 10,
@@ -30,7 +35,8 @@ public struct HierarchyAnalyzerConfiguration {
         excludeKeyboard: Bool = true,
         useSemanticAnalysis: Bool = true,
         categorizer: ElementCategorizerProtocol = DefaultElementCategorizer(),
-        semanticAnalyzer: SemanticAnalyzerProtocol? = DefaultSemanticAnalyzer()
+        semanticAnalyzer: SemanticAnalyzerProtocol? = DefaultSemanticAnalyzer(),
+        captureElementContext: Bool = true
     ) {
         self.maxDepth = maxDepth
         self.maxChildrenPerElement = maxChildrenPerElement
@@ -38,5 +44,6 @@ public struct HierarchyAnalyzerConfiguration {
         self.useSemanticAnalysis = useSemanticAnalysis
         self.categorizer = categorizer
         self.semanticAnalyzer = semanticAnalyzer
+        self.captureElementContext = captureElementContext
     }
 }
