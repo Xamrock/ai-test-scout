@@ -40,7 +40,7 @@ extension ExplorationPath {
 
     /// Generate a Swift test case for a failed interaction
     /// Documents the failure and includes XCTExpectFailure for the broken step
-    public func generateFailureTest(for failedStep: ExplorationStep, className: String = "GeneratedTests") -> String {
+    public func generateFailureTest(for failedStep: ExplorationStep, stepIndex: Int, className: String = "GeneratedTests") -> String {
         let reproPath = reproductionPath(for: failedStep)
         let testName = sanitizeTestName(failedStep.targetElement ?? "UnknownElement")
 
@@ -57,8 +57,7 @@ extension ExplorationPath {
         // Confidence: \(failedStep.confidence)%
         // Timestamp: \(failedStep.timestamp)
 
-        func testFailure_\(testName)() throws {
-            let app = XCUIApplication()
+        func testFailure_\(testName)_Step\(stepIndex)() throws {
             app.launch()
 
         """
@@ -67,7 +66,7 @@ extension ExplorationPath {
         for (index, step) in reproPath.enumerated() {
             let isFailedStep = step.id == failedStep.id
             test += "    // Step \(index + 1): \(step.reasoning)\n"
-            test += generateStepCode(step, indent: "    ", expectFailure: isFailedStep)
+            test += generateStepCode(step, stepNumber: index + 1, indent: "    ", expectFailure: isFailedStep)
             test += "\n"
         }
 
@@ -98,7 +97,6 @@ extension ExplorationPath {
         // Total steps: \(reproPath.count)
 
         func testSuccess_\(name)() throws {
-            let app = XCUIApplication()
             app.launch()
 
         """
@@ -106,7 +104,7 @@ extension ExplorationPath {
         // Add all successful steps only
         for (index, step) in reproPath.enumerated() {
             test += "    // Step \(index + 1): \(step.reasoning)\n"
-            test += generateStepCode(step, indent: "    ", expectFailure: false)
+            test += generateStepCode(step, stepNumber: index + 1, indent: "    ", expectFailure: false)
             test += "\n"
         }
 
@@ -147,8 +145,10 @@ extension ExplorationPath {
         // Add failure tests first (these document bugs)
         if !failedSteps.isEmpty {
             suite += "    // MARK: - Failure Tests (Document Known Issues)\n\n"
-            for failure in failedSteps {
-                suite += generateFailureTest(for: failure, className: className)
+            for (index, failure) in failedSteps.enumerated() {
+                // Find the actual step index in the original steps array
+                let stepIndex = steps.firstIndex(where: { $0.id == failure.id }) ?? index
+                suite += generateFailureTest(for: failure, stepIndex: stepIndex + 1, className: className)
                 suite += "\n"
             }
         }
@@ -288,46 +288,54 @@ extension ExplorationPath {
         return Int(Double(successRate.failed) / Double(steps.count) * 100)
     }
 
-    private func generateStepCode(_ step: ExplorationStep, indent: String, expectFailure: Bool) -> String {
+    private func generateStepCode(_ step: ExplorationStep, stepNumber: Int, indent: String, expectFailure: Bool) -> String {
         var code = ""
 
         switch step.action {
         case "tap":
             if let target = step.targetElement {
+                let escapedTarget = escapeSwiftString(target)
+                let varName = "element\(stepNumber)"
                 if expectFailure {
                     code += "\(indent)// Expected to fail: \(step.reasoning)\n"
-                    code += "\(indent)XCTExpectFailure(\"\(step.reasoning)\") {\n"
-                    code += "\(indent)    app.descendants(matching: .any).matching(identifier: \"\(target)\").firstMatch.tap()\n"
+                    code += "\(indent)XCTExpectFailure(\"\(escapeSwiftString(step.reasoning))\") {\n"
+                    code += "\(indent)    app.descendants(matching: .any).matching(identifier: \"\(escapedTarget)\").firstMatch.tap()\n"
                     code += "\(indent)}\n"
                 } else {
-                    code += "\(indent)app.descendants(matching: .any).matching(identifier: \"\(target)\").firstMatch.tap()\n"
-                    code += "\(indent)sleep(1) // Wait for navigation\n"
+                    code += "\(indent)let \(varName) = app.descendants(matching: .any).matching(identifier: \"\(escapedTarget)\").firstMatch\n"
+                    code += "\(indent)XCTAssertTrue(\(varName).waitForExistence(timeout: 5), \"Element '\(escapedTarget)' should exist\")\n"
+                    code += "\(indent)\(varName).tap()\n"
                 }
             }
 
         case "type":
             if let target = step.targetElement {
+                let escapedTarget = escapeSwiftString(target)
                 let text = step.textTyped ?? "test@example.com"
+                let escapedText = escapeSwiftString(text)
+                let varName = "element\(stepNumber)"
                 if expectFailure {
                     code += "\(indent)// Expected to fail: \(step.reasoning)\n"
-                    code += "\(indent)XCTExpectFailure(\"\(step.reasoning)\") {\n"
-                    code += "\(indent)    let element = app.descendants(matching: .any).matching(identifier: \"\(target)\").firstMatch\n"
-                    code += "\(indent)    element.tap()\n"
-                    code += "\(indent)    element.typeText(\"\(text)\")\n"
+                    code += "\(indent)XCTExpectFailure(\"\(escapeSwiftString(step.reasoning))\") {\n"
+                    code += "\(indent)    let \(varName) = app.descendants(matching: .any).matching(identifier: \"\(escapedTarget)\").firstMatch\n"
+                    code += "\(indent)    \(varName).tap()\n"
+                    code += "\(indent)    \(varName).typeText(\"\(escapedText)\")\n"
                     code += "\(indent)}\n"
                 } else {
-                    code += "\(indent)let element = app.descendants(matching: .any).matching(identifier: \"\(target)\").firstMatch\n"
-                    code += "\(indent)element.tap()\n"
-                    code += "\(indent)element.typeText(\"\(text)\")\n"
+                    code += "\(indent)let \(varName) = app.descendants(matching: .any).matching(identifier: \"\(escapedTarget)\").firstMatch\n"
+                    code += "\(indent)XCTAssertTrue(\(varName).waitForExistence(timeout: 5), \"Element '\(escapedTarget)' should exist\")\n"
+                    code += "\(indent)\(varName).tap()\n"
+                    code += "\(indent)\(varName).typeText(\"\(escapedText)\")\n"
                 }
             }
 
         case "swipe":
             code += "\(indent)app.swipeUp()\n"
-            code += "\(indent)sleep(1) // Wait for scroll animation\n"
+            code += "\(indent)Thread.sleep(forTimeInterval: 0.5) // Allow scroll animation to complete\n"
 
         default:
-            break
+            code += "\(indent)// WARNING: Unknown action '\(step.action)' - skipped\n"
+            code += "\(indent)// Target: \(step.targetElement ?? "none"), Reasoning: \(step.reasoning)\n"
         }
 
         return code
@@ -336,5 +344,17 @@ extension ExplorationPath {
     private func sanitizeTestName(_ name: String) -> String {
         name.replacingOccurrences(of: " ", with: "_")
             .replacingOccurrences(of: "[^a-zA-Z0-9_]", with: "", options: .regularExpression)
+    }
+
+    /// Escapes special characters for Swift string literals
+    /// - Parameter string: The string to escape
+    /// - Returns: Escaped string safe for use in generated code
+    func escapeSwiftString(_ string: String) -> String {
+        return string
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
     }
 }
