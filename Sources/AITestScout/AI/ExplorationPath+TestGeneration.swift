@@ -45,32 +45,32 @@ extension ExplorationPath {
         let testName = sanitizeTestName(failedStep.targetElement ?? "UnknownElement")
 
         var test = """
-        // MARK: - Failure Test: \(failedStep.targetElement ?? "Unknown")
-        //
-        // This test documents a UI interaction failure found during exploration.
-        // The failure occurs at step \(reproPath.count) of the flow.
-        //
-        // Expected behavior: \(failedStep.action) on '\(failedStep.targetElement ?? "element")' should work
-        // Actual behavior: \(failedStep.reasoning)
-        //
-        // Screen: \(failedStep.screenDescription)
-        // Confidence: \(failedStep.confidence)%
-        // Timestamp: \(failedStep.timestamp)
+            // MARK: - Failure Test: \(failedStep.targetElement ?? "Unknown")
+            //
+            // This test documents a UI interaction failure found during exploration.
+            // The failure occurs at step \(reproPath.count) of the flow.
+            //
+            // Expected behavior: \(failedStep.action) on '\(failedStep.targetElement ?? "element")' should work
+            // Actual behavior: \(failedStep.reasoning)
+            //
+            // Screen: \(failedStep.screenDescription)
+            // Confidence: \(failedStep.confidence)%
+            // Timestamp: \(failedStep.timestamp)
 
-        func testFailure_\(testName)_Step\(stepIndex)() throws {
-            app.launch()
+            func testFailure_\(testName)_Step\(stepIndex)() throws {
+                app.launch()
 
         """
 
         // Add all reproduction steps
         for (index, step) in reproPath.enumerated() {
             let isFailedStep = step.id == failedStep.id
-            test += "    // Step \(index + 1): \(step.reasoning)\n"
-            test += generateStepCode(step, stepNumber: index + 1, indent: "    ", expectFailure: isFailedStep)
+            test += "        // Step \(index + 1): \(step.reasoning)\n"
+            test += generateStepCode(step, stepNumber: index + 1, indent: "        ", expectFailure: isFailedStep)
             test += "\n"
         }
 
-        test += "}\n"
+        test += "    }\n"
         return test
     }
 
@@ -83,32 +83,32 @@ extension ExplorationPath {
 
         // Guard against empty paths (can happen if target step itself failed)
         guard !reproPath.isEmpty else {
-            return "// Cannot generate success test for failed step: \(targetStep.targetElement ?? "Unknown")\n"
+            return "    // Cannot generate success test for failed step: \(targetStep.targetElement ?? "Unknown")\n"
         }
 
         var test = """
-        // MARK: - Success Test: \(name)
-        //
-        // This test verifies a successful flow discovered during exploration.
-        // It ensures this interaction path continues to work.
-        //
-        // Final step: \(targetStep.action) on '\(targetStep.targetElement ?? "element")'
-        // Screen: \(targetStep.screenDescription)
-        // Total steps: \(reproPath.count)
+            // MARK: - Success Test: \(name)
+            //
+            // This test verifies a successful flow discovered during exploration.
+            // It ensures this interaction path continues to work.
+            //
+            // Final step: \(targetStep.action) on '\(targetStep.targetElement ?? "element")'
+            // Screen: \(targetStep.screenDescription)
+            // Total steps: \(reproPath.count)
 
-        func testSuccess_\(name)() throws {
-            app.launch()
+            func testSuccess_\(name)() throws {
+                app.launch()
 
         """
 
         // Add all successful steps only
         for (index, step) in reproPath.enumerated() {
-            test += "    // Step \(index + 1): \(step.reasoning)\n"
-            test += generateStepCode(step, stepNumber: index + 1, indent: "    ", expectFailure: false)
+            test += "        // Step \(index + 1): \(step.reasoning)\n"
+            test += generateStepCode(step, stepNumber: index + 1, indent: "        ", expectFailure: false)
             test += "\n"
         }
 
-        test += "}\n"
+        test += "    }\n"
         return test
     }
 

@@ -13,6 +13,12 @@ public struct ExplorationConfig: Sendable {
     /// If nil, uses smart defaults (Desktop or project directory)
     public var outputDirectory: URL?
 
+    /// Whether to save results to the project root directory instead of temp directory
+    /// When true, creates a "scout-results" directory in the project root
+    /// Note: This only works in CI/command-line environments, not in iOS simulator (sandbox restrictions)
+    /// Default: false (uses temp directory, safe for iOS simulator)
+    public var saveToProjectRoot: Bool
+
     /// Whether to generate test files automatically
     public var generateTests: Bool
 
@@ -73,7 +79,8 @@ public struct ExplorationConfig: Sendable {
         seed: Int? = nil,
         topP: Double = 0.9,
         enableVerification: Bool = true,
-        maxRetries: Int = 2
+        maxRetries: Int = 2,
+        saveToProjectRoot: Bool = false
     ) {
         self.steps = steps
         self.goal = goal
@@ -90,6 +97,7 @@ public struct ExplorationConfig: Sendable {
         self.topP = min(max(topP, 0.0), 1.0)
         self.enableVerification = enableVerification
         self.maxRetries = max(maxRetries, 0) // Ensure non-negative
+        self.saveToProjectRoot = saveToProjectRoot
     }
 
     /// Create a CI-friendly configuration with deterministic settings

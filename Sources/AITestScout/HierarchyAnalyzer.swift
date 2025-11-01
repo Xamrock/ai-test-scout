@@ -51,16 +51,24 @@ private struct CachedElement {
     let frame: CGRect
 
     @MainActor
-    init(from element: XCUIElement) {
+    init?(from element: XCUIElement) {
+        // First check if element exists - if not, return nil immediately
+        guard element.exists else { return nil }
+
         self.element = element
-        // Capture all properties in one pass to minimize XCUITest queries
-        self.exists = element.exists
+        self.exists = true
+
+        // Capture all properties in one pass
+        // XCTest can fail with "Failed to get matching snapshot" if element becomes stale
         self.identifier = element.identifier
         self.label = element.label
         self.elementType = element.elementType
         self.value = element.value
         self.isEnabled = element.isEnabled
         self.frame = element.frame
+
+        // Validate frame is finite (sometimes XCTest returns NaN/Inf values)
+        guard self.frame.isFinite else { return nil }
     }
 }
 
@@ -233,10 +241,8 @@ public class HierarchyAnalyzer {
                 let element = elements.element(boundBy: i)
 
                 // Cache element properties in one pass to minimize XCUITest queries
-                let cached = CachedElement(from: element)
-
-                // Skip if element doesn't exist
-                guard cached.exists else { continue }
+                // Skip if caching fails (element became stale or doesn't exist)
+                guard let cached = CachedElement(from: element) else { continue }
 
                 // Skip system UI elements
                 guard !categorizer.shouldSkip(elementType) else { continue }
@@ -277,9 +283,8 @@ public class HierarchyAnalyzer {
             let element = identifiedElements.element(boundBy: i)
 
             // Cache element properties in one pass to minimize XCUITest queries
-            let cached = CachedElement(from: element)
-
-            guard cached.exists else { continue }
+            // Skip if caching fails (element became stale or doesn't exist)
+            guard let cached = CachedElement(from: element) else { continue }
             guard !categorizer.shouldSkip(cached.elementType) else { continue }
 
             if excludeKeyboard && keyboardPresent && isKeyboardElement(cached) {

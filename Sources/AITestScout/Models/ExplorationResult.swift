@@ -39,6 +39,9 @@ public struct ExplorationResult: Sendable {
     /// Number of retry attempts made with alternative actions
     public let retryAttempts: Int
 
+    /// Timestamp when the exploration started
+    public let startTime: Date
+
     /// Initialize exploration result
     public init(
         screensDiscovered: Int,
@@ -52,7 +55,8 @@ public struct ExplorationResult: Sendable {
         verificationsPerformed: Int = 0,
         verificationsPassed: Int = 0,
         verificationsFailed: Int = 0,
-        retryAttempts: Int = 0
+        retryAttempts: Int = 0,
+        startTime: Date = Date()
     ) {
         self.screensDiscovered = screensDiscovered
         self.transitions = transitions
@@ -66,6 +70,7 @@ public struct ExplorationResult: Sendable {
         self.verificationsPassed = verificationsPassed
         self.verificationsFailed = verificationsFailed
         self.retryAttempts = retryAttempts
+        self.startTime = startTime
     }
 
     // MARK: - Computed Properties

@@ -186,6 +186,7 @@ struct StepExport: Codable {
     let confidence: Int
     let wasSuccessful: Bool
     let elementContext: ElementContext?
+    let screenshotPath: String?
 
     static func from(_ step: ExplorationStep, elementContexts: [String: ElementContext]) -> StepExport {
         let context: ElementContext?
@@ -208,7 +209,8 @@ struct StepExport: Codable {
             reasoning: step.reasoning,
             confidence: step.confidence,
             wasSuccessful: step.wasSuccessful,
-            elementContext: context
+            elementContext: context,
+            screenshotPath: step.screenshotPath
         )
     }
 }

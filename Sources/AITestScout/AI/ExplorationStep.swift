@@ -39,6 +39,10 @@ public struct ExplorationStep: Codable, Equatable {
     /// Whether this step was a retry attempt from a failed verification
     public let wasRetry: Bool
 
+    /// Relative path to screenshot file (e.g., "screenshots/step_1_before.png")
+    /// Stored as relative path for flexibility - works with local files and future backend URLs
+    public let screenshotPath: String?
+
     public init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
@@ -51,7 +55,8 @@ public struct ExplorationStep: Codable, Equatable {
         confidence: Int,
         wasSuccessful: Bool = true,
         verificationResult: VerificationResult? = nil,
-        wasRetry: Bool = false
+        wasRetry: Bool = false,
+        screenshotPath: String? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -65,6 +70,7 @@ public struct ExplorationStep: Codable, Equatable {
         self.wasSuccessful = wasSuccessful
         self.verificationResult = verificationResult
         self.wasRetry = wasRetry
+        self.screenshotPath = screenshotPath
     }
 
     /// Creates an ExplorationStep from an ExplorationDecision
@@ -73,7 +79,8 @@ public struct ExplorationStep: Codable, Equatable {
         hierarchy: CompressedHierarchy,
         wasSuccessful: Bool = true,
         verificationResult: VerificationResult? = nil,
-        wasRetry: Bool = false
+        wasRetry: Bool = false,
+        screenshotPath: String? = nil
     ) -> ExplorationStep {
         // Generate screen description from interactive elements
         let interactiveElements = hierarchy.elements.filter { $0.interactive }
@@ -100,7 +107,8 @@ public struct ExplorationStep: Codable, Equatable {
             confidence: decision.confidence,
             wasSuccessful: wasSuccessful,
             verificationResult: verificationResult,
-            wasRetry: wasRetry
+            wasRetry: wasRetry,
+            screenshotPath: screenshotPath
         )
     }
 

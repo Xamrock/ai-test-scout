@@ -112,6 +112,27 @@ public class Scout: XCTestCase, @unchecked Sendable {
         // Track timing
         let startTime = Date()
 
+        // Determine output directory ONCE for this entire exploration session
+        // This ensures screenshots, tests, and dashboard all go to the same directory
+        var outputDir: URL?
+        var screenshotsDir: URL?
+        if let explorationPath = crawler.explorationPath {
+            do {
+                outputDir = try determineOutputDirectory(
+                    configured: config.outputDirectory,
+                    sessionId: explorationPath.sessionId,
+                    saveToProjectRoot: config.saveToProjectRoot
+                )
+                screenshotsDir = outputDir!.appendingPathComponent("screenshots")
+                try FileManager.default.createDirectory(at: screenshotsDir!, withIntermediateDirectories: true)
+                print("📸 Screenshots directory created: \(screenshotsDir!.path)")
+            } catch {
+                print("⚠️  Failed to create screenshots directory: \(error)")
+            }
+        } else {
+            print("⚠️  No exploration path available for screenshots directory")
+        }
+
         // Exploration loop - run on MainActor for UI operations
         let (duration, stats, verificationStats) = try testCase.xcAwait {
             try await Task { @MainActor in
@@ -127,10 +148,31 @@ public class Scout: XCTestCase, @unchecked Sendable {
                         // 1. REUSES: analyzer.capture() (existing, MainActor-isolated)
                         let beforeHierarchy = analyzer.capture(from: app)
 
+                        // Save screenshot for this step
+                        var screenshotPath: String? = nil
+                        if let screenshotsDir = screenshotsDir {
+                            if beforeHierarchy.screenshot.isEmpty {
+                                print("⚠️  Step \(stepNumber): Screenshot data is empty (size: \(beforeHierarchy.screenshot.count) bytes)")
+                            } else {
+                                let filename = "step_\(stepNumber)_before.png"
+                                let screenshotFileURL = screenshotsDir.appendingPathComponent(filename)
+                                do {
+                                    try beforeHierarchy.screenshot.write(to: screenshotFileURL)
+                                    screenshotPath = "screenshots/\(filename)" // Relative path for portability
+                                    print("📸 Step \(stepNumber): Saved screenshot (\(beforeHierarchy.screenshot.count) bytes)")
+                                } catch {
+                                    print("⚠️  Step \(stepNumber): Failed to save screenshot: \(error)")
+                                }
+                            }
+                        } else {
+                            print("⚠️  Step \(stepNumber): Screenshots directory not available")
+                        }
+
                         // 2. REUSES: crawler.decideNextActionWithChoices() (existing)
                         let decision = try await crawler.decideNextActionWithChoices(
                             hierarchy: beforeHierarchy,
-                            goal: config.goal
+                            goal: config.goal,
+                            recordStep: false  // Scout will record after retry loop
                         )
 
                         // 3. Check if done
@@ -215,13 +257,14 @@ public class Scout: XCTestCase, @unchecked Sendable {
                             }
                         }
 
-                        // 5. Record step with verification result
+                        // 5. Record step with verification result and screenshot path
                         let step = ExplorationStep.from(
                             decision: currentDecision,
                             hierarchy: beforeHierarchy,
                             wasSuccessful: actionSuccessful && (verificationResult?.passed ?? true),
                             verificationResult: verificationResult,
-                            wasRetry: attemptNumber > 0
+                            wasRetry: attemptNumber > 0,
+                            screenshotPath: screenshotPath
                         )
                         crawler.explorationPath?.addStep(step)
                     }
@@ -254,20 +297,23 @@ public class Scout: XCTestCase, @unchecked Sendable {
 
         if config.generateTests, let explorationPath = crawler.explorationPath, failedActions > 0 {
             do {
-                // Determine output directory using smart defaults
-                let outputDir = try determineOutputDirectory(
-                    configured: config.outputDirectory,
-                    sessionId: explorationPath.sessionId
-                )
+                // Use the SAME output directory that was created for screenshots
+                let finalOutputDir = outputDir ?? {
+                    try! determineOutputDirectory(
+                        configured: config.outputDirectory,
+                        sessionId: explorationPath.sessionId,
+                        saveToProjectRoot: config.saveToProjectRoot
+                    )
+                }()
 
-                try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: finalOutputDir, withIntermediateDirectories: true)
 
                 // Save test suite
-                testFileURL = outputDir.appendingPathComponent("GeneratedTests.swift")
+                testFileURL = finalOutputDir.appendingPathComponent("GeneratedTests.swift")
                 try explorationPath.saveTestSuite(to: testFileURL!, className: "GeneratedUITests")
 
                 // Save failure report
-                reportFileURL = outputDir.appendingPathComponent("FailureReport.md")
+                reportFileURL = finalOutputDir.appendingPathComponent("FailureReport.md")
                 try explorationPath.saveFailureReport(to: reportFileURL!)
 
                 if config.verboseOutput {
@@ -293,29 +339,35 @@ public class Scout: XCTestCase, @unchecked Sendable {
             verificationsPerformed: verificationStats.0,
             verificationsPassed: verificationStats.1,
             verificationsFailed: verificationStats.2,
-            retryAttempts: verificationStats.3
+            retryAttempts: verificationStats.3,
+            startTime: startTime
         )
 
         // Generate interactive HTML dashboard
         if config.generateDashboard {
             do {
-                let outputDir: URL
+                let dashboardOutputDir: URL
                 if let testFile = testFileURL {
                     // Use same directory as tests
-                    outputDir = testFile.deletingLastPathComponent()
+                    dashboardOutputDir = testFile.deletingLastPathComponent()
+                } else if let existingOutputDir = outputDir {
+                    // Use the SAME output directory that was created for screenshots
+                    dashboardOutputDir = existingOutputDir
+                    try FileManager.default.createDirectory(at: dashboardOutputDir, withIntermediateDirectories: true)
                 } else if let explorationPath = crawler.explorationPath {
-                    // Create directory even if no tests generated
-                    outputDir = try determineOutputDirectory(
+                    // Create directory even if no tests generated (fallback, shouldn't happen)
+                    dashboardOutputDir = try determineOutputDirectory(
                         configured: config.outputDirectory,
-                        sessionId: explorationPath.sessionId
+                        sessionId: explorationPath.sessionId,
+                        saveToProjectRoot: config.saveToProjectRoot
                     )
-                    try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+                    try FileManager.default.createDirectory(at: dashboardOutputDir, withIntermediateDirectories: true)
                 } else {
                     // Fallback to temp directory
-                    outputDir = FileManager.default.temporaryDirectory
+                    dashboardOutputDir = FileManager.default.temporaryDirectory
                         .appendingPathComponent("AITestScoutExplorations")
                         .appendingPathComponent(UUID().uuidString)
-                    try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+                    try FileManager.default.createDirectory(at: dashboardOutputDir, withIntermediateDirectories: true)
                 }
 
                 // Generate dashboard HTML
@@ -328,7 +380,7 @@ public class Scout: XCTestCase, @unchecked Sendable {
                 )
 
                 // Save dashboard
-                dashboardURL = outputDir.appendingPathComponent("dashboard.html")
+                dashboardURL = dashboardOutputDir.appendingPathComponent("dashboard.html")
                 try htmlContent.write(to: dashboardURL!, atomically: true, encoding: String.Encoding.utf8)
 
                 if config.verboseOutput {
@@ -349,6 +401,8 @@ public class Scout: XCTestCase, @unchecked Sendable {
             }
         }
 
+        // No longer need to copy - files are already in project root by default
+
         // Show summary output if verbose
         if config.verboseOutput {
             printExplorationSummary(result: result, config: config)
@@ -363,8 +417,8 @@ public class Scout: XCTestCase, @unchecked Sendable {
     // MARK: - Private Helpers
 
     /// Determine the output directory for generated files
-    /// Uses smart defaults: Temp directory with clear naming
-    nonisolated private static func determineOutputDirectory(configured: URL?, sessionId: UUID) throws -> URL {
+    /// Uses smart defaults: Temp directory (safe for iOS sandbox) or project root (for CI)
+    nonisolated private static func determineOutputDirectory(configured: URL?, sessionId: UUID, saveToProjectRoot: Bool = false) throws -> URL {
         // Use configured directory if provided
         if let configured = configured {
             let formatter = DateFormatter()
@@ -374,17 +428,92 @@ public class Scout: XCTestCase, @unchecked Sendable {
             return configured.appendingPathComponent(sessionFolder)
         }
 
-        // Use temp directory with clear naming (accessible for EMs)
-        // iOS doesn't support Desktop, so use temp with descriptive path
-        let tempBase = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AITestScoutExplorations")
-
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = formatter.string(from: Date())
         let sessionFolder = "\(timestamp)_\(sessionId.uuidString.prefix(8))"
 
+        // If saveToProjectRoot is enabled (typically for CI), try to use project root
+        if saveToProjectRoot {
+            do {
+                let projectRoot = try findProjectRoot()
+
+                // Verify we're not at filesystem root (sandbox issue)
+                if projectRoot.path != "/" && projectRoot.path != "//" {
+                    let scoutResultsDir = projectRoot.appendingPathComponent("scout-results")
+
+                    // Test if we can write to this location
+                    let testFile = scoutResultsDir.appendingPathComponent(".write-test")
+                    do {
+                        try FileManager.default.createDirectory(at: scoutResultsDir, withIntermediateDirectories: true)
+                        try Data().write(to: testFile)
+                        try FileManager.default.removeItem(at: testFile)
+
+                        // Success! We can write to project root
+                        return scoutResultsDir.appendingPathComponent(sessionFolder)
+                    } catch {
+                        // Can't write to project root (iOS sandbox), fall back to temp
+                        print("⚠️  Cannot write to project root (sandboxed environment), using temp directory")
+                    }
+                }
+            } catch {
+                print("⚠️  Could not find project root, using temp directory")
+            }
+        }
+
+        // Default: Use temp directory (works in iOS sandbox)
+        let tempBase = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AITestScoutExplorations")
+
         return tempBase.appendingPathComponent(sessionFolder)
+    }
+
+    /// Finds the project root directory by looking for common project markers
+    /// - Returns: URL to the project root directory
+    /// - Throws: Error if project root cannot be determined
+    nonisolated private static func findProjectRoot() throws -> URL {
+        let fileManager = FileManager.default
+        var currentDir = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+
+        // Look for project markers (Package.swift, .git, *.xcodeproj, *.xcworkspace)
+        let projectMarkers = ["Package.swift", ".git", ".xcodeproj", ".xcworkspace"]
+
+        // Search up to 10 levels up
+        for _ in 0..<10 {
+            // Check if any project marker exists in current directory
+            for marker in projectMarkers {
+                if marker.hasPrefix(".") && !marker.contains(".") {
+                    // Directory marker like .git
+                    let markerPath = currentDir.appendingPathComponent(marker)
+                    if fileManager.fileExists(atPath: markerPath.path) {
+                        return currentDir
+                    }
+                } else if marker.contains(".") {
+                    // File extension marker like .xcodeproj
+                    let contents = try? fileManager.contentsOfDirectory(atPath: currentDir.path)
+                    if let contents = contents, contents.contains(where: { $0.hasSuffix(marker) }) {
+                        return currentDir
+                    }
+                } else {
+                    // File marker like Package.swift
+                    let markerPath = currentDir.appendingPathComponent(marker)
+                    if fileManager.fileExists(atPath: markerPath.path) {
+                        return currentDir
+                    }
+                }
+            }
+
+            // Move up one directory
+            let parentDir = currentDir.deletingLastPathComponent()
+            if parentDir.path == currentDir.path {
+                // Reached root, can't go up further
+                break
+            }
+            currentDir = parentDir
+        }
+
+        // Fallback: use current directory
+        return URL(fileURLWithPath: fileManager.currentDirectoryPath)
     }
 
     /// Opens a URL in the default system browser

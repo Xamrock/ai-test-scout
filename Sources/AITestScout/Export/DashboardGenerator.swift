@@ -52,6 +52,14 @@ public class DashboardGenerator {
                 <div class="hint-footer">Press <kbd>?</kbd> to toggle</div>
             </div>
 
+            <div id="screenshot-modal" class="screenshot-modal" onclick="closeScreenshot(event)">
+                <div class="screenshot-modal-content">
+                    <button class="screenshot-modal-close" onclick="closeScreenshot(event)">Close (Esc)</button>
+                    <img id="screenshot-modal-img" src="" alt="Screenshot">
+                    <div class="screenshot-modal-caption" id="screenshot-modal-caption"></div>
+                </div>
+            </div>
+
             <script>
                 // Embed data
                 const EXPLORATION_DATA = {
@@ -191,6 +199,23 @@ public class DashboardGenerator {
                 verificationHTML = ""
             }
 
+            let screenshotHTML: String
+            if let screenshotPath = step.screenshotPath {
+                screenshotHTML = """
+                <div class="detail-row">
+                    <span class="detail-label">Screenshot:</span>
+                </div>
+                <div class="screenshot-preview">
+                    <img src="\(escapeHtml(screenshotPath))"
+                         alt="Step \(index + 1) screenshot"
+                         onclick="openScreenshot('\(escapeJavaScript(screenshotPath))', \(index + 1))"
+                         loading="lazy">
+                </div>
+                """
+            } else {
+                screenshotHTML = ""
+            }
+
             return """
             <div class="timeline-item \(statusClass)" data-step="\(index)" data-action="\(step.action)" data-success="\(step.wasSuccessful)" data-retry="\(step.wasRetry)">
                 <div class="timeline-connector"></div>
@@ -228,6 +253,7 @@ public class DashboardGenerator {
                             <span class="detail-value">\(confidence)% (\(confidenceClass))</span>
                         </div>
                         \(verificationHTML)
+                        \(screenshotHTML)
                     </div>
                 </div>
             </div>
@@ -256,7 +282,7 @@ public class DashboardGenerator {
             </div>
             <div class="section-content">
                 <div class="code-container">
-                    <pre id="generated-tests" class="code-block"><code class="language-swift">\(highlightSwiftCode(escapeHtml(code)))</code></pre>
+                    <pre id="generated-tests" class="code-block"><code class="language-swift">\(escapeHtml(code))</code></pre>
                 </div>
             </div>
         </section>
@@ -527,6 +553,7 @@ public class DashboardGenerator {
     }
 
     private func encodeResultToJSON(_ result: ExplorationResult) -> String {
+        let startTimeMs = Int(result.startTime.timeIntervalSince1970 * 1000)
         return """
         {
             "screensDiscovered": \(result.screensDiscovered),
@@ -539,7 +566,8 @@ public class DashboardGenerator {
             "verificationsPassed": \(result.verificationsPassed),
             "verificationsFailed": \(result.verificationsFailed),
             "retryAttempts": \(result.retryAttempts),
-            "hasCriticalFailures": \(result.hasCriticalFailures)
+            "hasCriticalFailures": \(result.hasCriticalFailures),
+            "startTime": \(startTimeMs)
         }
         """
     }
@@ -1062,6 +1090,89 @@ public class DashboardGenerator {
             color: var(--text-secondary);
         }
 
+        /* Screenshot Preview */
+        .screenshot-preview {
+            margin-top: 12px;
+            border-radius: 6px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-subtle);
+            max-width: 300px;
+        }
+
+        .screenshot-preview img {
+            width: 100%;
+            height: auto;
+            display: block;
+            cursor: pointer;
+            transition: opacity var(--transition);
+        }
+
+        .screenshot-preview img:hover {
+            opacity: 0.85;
+        }
+
+        /* Screenshot Modal */
+        .screenshot-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+        }
+
+        .screenshot-modal.visible {
+            display: flex;
+        }
+
+        .screenshot-modal-content {
+            max-width: 90%;
+            max-height: 90%;
+            position: relative;
+        }
+
+        .screenshot-modal img {
+            max-width: 100%;
+            max-height: 90vh;
+            display: block;
+            border-radius: 8px;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+        }
+
+        .screenshot-modal-close {
+            position: absolute;
+            top: -40px;
+            right: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-medium);
+            border-radius: 6px;
+            padding: 8px 16px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .screenshot-modal-close:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .screenshot-modal-caption {
+            position: absolute;
+            bottom: -40px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
         /* Collapsible Sections */
         .collapsible-section {
             margin: 0 32px 24px;
@@ -1425,9 +1536,9 @@ public class DashboardGenerator {
         // Initialize timestamp
         function updateTimestamp() {
             const timestampEl = document.getElementById('timestamp');
-            if (timestampEl) {
-                const now = new Date();
-                timestampEl.textContent = now.toLocaleString('en-US', {
+            if (timestampEl && EXPLORATION_DATA && EXPLORATION_DATA.result && EXPLORATION_DATA.result.startTime) {
+                const scanTime = new Date(EXPLORATION_DATA.result.startTime);
+                timestampEl.textContent = scanTime.toLocaleString('en-US', {
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric',
@@ -1533,6 +1644,31 @@ public class DashboardGenerator {
             }
         }
 
+        // Screenshot modal functions
+        function openScreenshot(path, stepNumber) {
+            const modal = document.getElementById('screenshot-modal');
+            const img = document.getElementById('screenshot-modal-img');
+            const caption = document.getElementById('screenshot-modal-caption');
+
+            if (modal && img && caption) {
+                img.src = path;
+                caption.textContent = `Step ${stepNumber} Screenshot`;
+                modal.classList.add('visible');
+                document.body.style.overflow = 'hidden'; // Prevent background scroll
+            }
+        }
+
+        function closeScreenshot(event) {
+            // Only close if clicking the modal backdrop or close button
+            if (event.target.id === 'screenshot-modal' || event.target.classList.contains('screenshot-modal-close')) {
+                const modal = document.getElementById('screenshot-modal');
+                if (modal) {
+                    modal.classList.remove('visible');
+                    document.body.style.overflow = ''; // Restore scroll
+                }
+            }
+        }
+
         // Timeline filtering
         function setupFiltering() {
             const searchInput = document.getElementById('timeline-search');
@@ -1626,6 +1762,12 @@ public class DashboardGenerator {
                     break;
 
                 case 'escape':
+                    // Close screenshot modal first if open
+                    const modal = document.getElementById('screenshot-modal');
+                    if (modal && modal.classList.contains('visible')) {
+                        closeScreenshot({ target: modal });
+                        break;
+                    }
                     // Collapse all
                     document.querySelectorAll('.collapsible-section').forEach(section => {
                         section.classList.remove('expanded');
@@ -1669,9 +1811,6 @@ public class DashboardGenerator {
             setupFiltering();
             restoreSectionStates();
             autoExpandFailedSteps();
-
-            // Update timestamp every minute
-            setInterval(updateTimestamp, 60000);
         });
         """
     }
